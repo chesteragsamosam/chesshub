@@ -21,11 +21,13 @@ Optional:
 - `LICHESS_CLIENT_ID` — Lichess OAuth app client id (PKCE; no secret)
 - `PAYMONGO_SECRET_KEY` / `PAYMONGO_WEBHOOK_SECRET` — paid tournament registration (GCash)
 
-2. Start MySQL and push schema:
+2. Start MySQL and sync schema:
 
 ```sh
 pnpm db:start   # docker compose
 pnpm db:push
+# If upgrading from Stripe columns locally:
+node --env-file=.env scripts/migrate-paymongo.mjs
 ```
 
 3. Run the app:

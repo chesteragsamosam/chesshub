@@ -116,7 +116,7 @@
 			{:else}
 				<form method="post" action="?/register" use:enhance>
 					<button type="submit" class="btn btn-primary btn-block">
-						{data.tournament.entryFeeCents > 0 ? 'Pay & register' : 'Register for free'}
+						{data.tournament.entryFeeCents > 0 ? 'Pay with GCash' : 'Register for free'}
 					</button>
 				</form>
 				{#if data.tournament.entryFeeCents > 0 && !data.paymongoConfigured}
