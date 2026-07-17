@@ -35,7 +35,7 @@
 			</label>
 			<label class="field">
 				Country (ISO)
-				<input type="text" name="country" maxlength="2" placeholder="US" class="uppercase" />
+				<input type="text" name="country" maxlength="2" placeholder="PH" class="uppercase" />
 			</label>
 			<label class="field">
 				Start
@@ -51,7 +51,7 @@
 			</label>
 			<label class="field">
 				Currency
-				<input type="text" name="currency" value="usd" maxlength="3" class="lowercase" />
+				<input type="text" name="currency" value="php" maxlength="3" class="lowercase" />
 			</label>
 			<label class="field span-2">
 				Max players (optional)
@@ -63,8 +63,8 @@
 			<input type="checkbox" name="publish" />
 			<span>
 				Publish immediately
-				{#if !data.stripeAccount?.onboardingComplete}
-					<span class="hint">(paid events require Stripe Connect)</span>
+				{#if !data.paymongoConfigured}
+					<span class="hint">(paid events require PayMongo)</span>
 				{/if}
 			</span>
 		</label>

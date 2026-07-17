@@ -38,7 +38,7 @@
 	</div>
 	<div class="feature">
 		<h2 class="section-title">Paid registration</h2>
-		<p>Register and pay entry fees securely through Stripe.</p>
+		<p>Register and pay entry fees securely with GCash via PayMongo.</p>
 	</div>
 </section>
 

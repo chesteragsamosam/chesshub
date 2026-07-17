@@ -51,7 +51,6 @@
 		"vitest-browser-svelte": "^2.1.1"
 	},
 	"dependencies": {
-		"sharp": "^0.35.3",
-		"stripe": "^22.3.1"
+		"sharp": "^0.35.3"
 	}
 }

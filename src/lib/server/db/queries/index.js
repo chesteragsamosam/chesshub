@@ -7,7 +7,6 @@ import {
 	tournament,
 	tournamentRegistration,
 	organizerRequest,
-	stripeConnectAccount,
 	userFollow,
 	user
 } from '$lib/server/db/schema';
@@ -679,7 +678,7 @@ export async function createRegistration(tournamentId, userId) {
 
 /**
  * @param {string} id
- * @param {{ status?: 'pending' | 'paid' | 'cancelled' | 'refunded', stripeCheckoutSessionId?: string | null, stripePaymentIntentId?: string | null, paidAt?: Date | null }} data
+ * @param {{ status?: 'pending' | 'paid' | 'cancelled' | 'refunded', paymongoCheckoutSessionId?: string | null, paymongoPaymentId?: string | null, paidAt?: Date | null }} data
  */
 export async function updateRegistration(id, data) {
 	await db.update(tournamentRegistration).set(data).where(eq(tournamentRegistration.id, id));
@@ -698,7 +697,7 @@ export async function getRegistrationByCheckoutSession(checkoutSessionId) {
 	const [row] = await db
 		.select()
 		.from(tournamentRegistration)
-		.where(eq(tournamentRegistration.stripeCheckoutSessionId, checkoutSessionId))
+		.where(eq(tournamentRegistration.paymongoCheckoutSessionId, checkoutSessionId))
 		.limit(1);
 	return row ?? null;
 }
@@ -764,68 +763,6 @@ export async function reviewOrganizerRequest(requestId, status, adminId) {
 	}
 
 	return request;
-}
-
-/**
- * @param {string} userId
- */
-export async function getStripeConnectAccount(userId) {
-	const [row] = await db
-		.select()
-		.from(stripeConnectAccount)
-		.where(eq(stripeConnectAccount.userId, userId))
-		.limit(1);
-	return row ?? null;
-}
-
-/**
- * @param {string} stripeAccountId
- */
-export async function getStripeConnectAccountByStripeId(stripeAccountId) {
-	const [row] = await db
-		.select()
-		.from(stripeConnectAccount)
-		.where(eq(stripeConnectAccount.stripeAccountId, stripeAccountId))
-		.limit(1);
-	return row ?? null;
-}
-
-/**
- * @param {{ userId: string, stripeAccountId: string, onboardingComplete?: boolean }} data
- */
-export async function upsertStripeConnectAccount(data) {
-	const existing = await getStripeConnectAccount(data.userId);
-
-	if (existing) {
-		await db
-			.update(stripeConnectAccount)
-			.set({
-				stripeAccountId: data.stripeAccountId,
-				onboardingComplete: data.onboardingComplete ?? existing.onboardingComplete
-			})
-			.where(eq(stripeConnectAccount.id, existing.id));
-		return getStripeConnectAccount(data.userId);
-	}
-
-	const id = createId();
-	await db.insert(stripeConnectAccount).values({
-		id,
-		userId: data.userId,
-		stripeAccountId: data.stripeAccountId,
-		onboardingComplete: data.onboardingComplete ?? false
-	});
-	return getStripeConnectAccount(data.userId);
-}
-
-/**
- * @param {string} userId
- * @param {boolean} onboardingComplete
- */
-export async function updateStripeOnboardingStatus(userId, onboardingComplete) {
-	await db
-		.update(stripeConnectAccount)
-		.set({ onboardingComplete })
-		.where(eq(stripeConnectAccount.userId, userId));
 }
 
 /**

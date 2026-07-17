@@ -1,15 +1,12 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { requireOrganizer } from '$lib/server/auth-guards';
-import {
-	createTournament,
-	getStripeConnectAccount
-} from '$lib/server/db/queries';
+import { createTournament } from '$lib/server/db/queries';
+import { isPaymongoConfigured } from '$lib/server/paymongo';
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load(event) {
-	const user = requireOrganizer(event);
-	const stripeAccount = await getStripeConnectAccount(user.id);
-	return { stripeAccount };
+	requireOrganizer(event);
+	return { paymongoConfigured: isPaymongoConfigured() };
 }
 
 export const actions = {
@@ -26,7 +23,7 @@ export const actions = {
 		const startDateRaw = formData.get('startDate')?.toString() ?? '';
 		const endDateRaw = formData.get('endDate')?.toString() ?? '';
 		const entryFee = Number(formData.get('entryFee')?.toString() ?? '0');
-		const currency = (formData.get('currency')?.toString() || 'usd').toLowerCase();
+		const currency = (formData.get('currency')?.toString() || 'php').toLowerCase();
 		const maxPlayersRaw = formData.get('maxPlayers')?.toString() ?? '';
 		const publish = formData.get('publish') === 'on';
 
@@ -53,15 +50,16 @@ export const actions = {
 			return fail(400, { message: 'Country must be a 2-letter ISO code' });
 		}
 
+		if (currency !== 'php') {
+			return fail(400, { message: 'Currency must be PHP for GCash payments' });
+		}
+
 		let status = /** @type {'draft' | 'published'} */ ('draft');
 		if (publish) {
-			if (entryFeeCents > 0) {
-				const connect = await getStripeConnectAccount(user.id);
-				if (!connect?.onboardingComplete) {
-					return fail(400, {
-						message: 'Connect Stripe and finish onboarding before publishing paid tournaments'
-					});
-				}
+			if (entryFeeCents > 0 && !isPaymongoConfigured()) {
+				return fail(400, {
+					message: 'PayMongo is not configured. Set PAYMONGO_SECRET_KEY before publishing paid tournaments'
+				});
 			}
 			status = 'published';
 		}

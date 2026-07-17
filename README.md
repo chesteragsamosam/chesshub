@@ -1,6 +1,6 @@
 # ChessHub
 
-Link chess profiles (Lichess, Chess.com, FIDE), discover local tournaments, and pay entry fees via Stripe Connect.
+Link chess profiles (Lichess, Chess.com, FIDE), discover local tournaments, and pay entry fees with GCash via PayMongo.
 
 ## Setup
 
@@ -17,7 +17,7 @@ Required:
 
 Optional:
 - `LICHESS_CLIENT_ID` — Lichess OAuth app client id (PKCE; no secret)
-- `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` — paid tournament registration
+- `PAYMONGO_SECRET_KEY` / `PAYMONGO_WEBHOOK_SECRET` — paid tournament registration (GCash)
 
 2. Start MySQL and push schema:
 
@@ -73,11 +73,16 @@ UPDATE user SET role = 'admin' WHERE email = 'you@example.com';
 | `/organizer/apply` | Request organizer access |
 | `/admin/organizer-requests` | Approve organizers |
 | `/organizer` | Create/manage tournaments |
-| `/organizer/stripe` | Stripe Connect onboarding |
-| `/api/stripe/webhook` | Stripe webhooks |
+| `/api/paymongo/webhook` | PayMongo webhooks |
 
-## Stripe webhooks (local)
+## PayMongo (paid tournaments)
 
-```sh
-stripe listen --forward-to localhost:5173/api/stripe/webhook
-```
+Entry fees use PayMongo Hosted Checkout with **GCash** and **PHP** only. ChessHub is the merchant of record.
+
+1. Create a PayMongo account and complete KYC.
+2. Copy your secret key (`sk_test_…` or `sk_live_…`) into `PAYMONGO_SECRET_KEY`.
+3. In the PayMongo dashboard, enable GCash under payment methods.
+4. Add a webhook endpoint pointing to `https://your-domain/api/paymongo/webhook` and subscribe to `checkout_session.payment.paid`.
+5. Copy the webhook signing secret into `PAYMONGO_WEBHOOK_SECRET`.
+
+For local development, expose your app with a tunnel (e.g. ngrok) and register that URL as the webhook endpoint.
