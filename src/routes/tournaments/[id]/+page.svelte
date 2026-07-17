@@ -40,9 +40,14 @@
 	</header>
 
 	{#if data.checkoutResult === 'success'}
-		<p class="alert alert-success">
-			Payment received. Your registration will show as paid once PayMongo confirms.
-		</p>
+		{#if data.registration?.status === 'paid'}
+			<p class="alert alert-success">Payment confirmed. You are registered for this tournament.</p>
+		{:else}
+			<p class="alert alert-warning">
+				Checkout completed, but payment is not confirmed yet. Refresh this page in a moment. If it
+				stays pending, PayMongo could not reach this server’s webhook (common on localhost).
+			</p>
+		{/if}
 	{:else if data.checkoutResult === 'cancelled'}
 		<p class="alert alert-warning">Checkout cancelled.</p>
 	{/if}

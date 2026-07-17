@@ -104,6 +104,52 @@ export async function createCheckoutSession(opts) {
 }
 
 /**
+ * @typedef {{
+ *   id?: string,
+ *   attributes?: {
+ *     payments?: Array<{ id?: string, attributes?: { status?: string } }>,
+ *     payment_intent?: { id?: string } | null,
+ *     status?: string
+ *   }
+ * }} PaymongoCheckoutSession
+ */
+
+/**
+ * Retrieve a checkout session (secret key). Tries v2 then v1.
+ * @param {string} checkoutSessionId
+ * @returns {Promise<PaymongoCheckoutSession | null>}
+ */
+export async function getCheckoutSession(checkoutSessionId) {
+	for (const apiBase of [PAYMONGO_CHECKOUT_API, PAYMONGO_API]) {
+		try {
+			const json = await paymongoFetch(`/checkout_sessions/${checkoutSessionId}`, { apiBase });
+			if (json?.data?.id) return /** @type {PaymongoCheckoutSession} */ (json.data);
+		} catch {
+			// try next base
+		}
+	}
+	return null;
+}
+
+/**
+ * @param {PaymongoCheckoutSession | null | undefined} session
+ */
+export function getPaidPaymentId(session) {
+	const payments = session?.attributes?.payments ?? [];
+	const paid = payments.find((payment) => payment?.attributes?.status === 'paid');
+	return paid?.id ?? null;
+}
+
+/**
+ * True when PayMongo reports at least one paid payment on the session.
+ * @param {PaymongoCheckoutSession | null | undefined} session
+ */
+export function isCheckoutSessionPaid(session) {
+	const payments = session?.attributes?.payments ?? [];
+	return payments.some((payment) => payment?.attributes?.status === 'paid');
+}
+
+/**
  * Verify PayMongo webhook signature (Paymongo-Signature header).
  * @param {string} rawBody
  * @param {string} signatureHeader
@@ -136,4 +182,32 @@ export function verifyWebhookSignature(rawBody, signatureHeader, webhookSecret) 
 			return false;
 		}
 	});
+}
+
+/**
+ * Normalize webhook body shapes PayMongo has used over time.
+ * @param {unknown} payload
+ * @returns {{ eventType: string | null, session: PaymongoCheckoutSession | null }}
+ */
+export function parseWebhookEvent(payload) {
+	const root = /** @type {Record<string, any>} */ (payload ?? {});
+
+	// Newer hosted-checkout style: { data: { type, data: session } }
+	if (root?.data?.type && root?.data?.data) {
+		return {
+			eventType: /** @type {string} */ (root.data.type),
+			session: /** @type {PaymongoCheckoutSession} */ (root.data.data)
+		};
+	}
+
+	// Classic event envelope: { data: { type: 'event', attributes: { type, data } } }
+	const attrs = root?.data?.attributes;
+	if (attrs?.type) {
+		return {
+			eventType: /** @type {string} */ (attrs.type),
+			session: /** @type {PaymongoCheckoutSession | null} */ (attrs.data ?? null)
+		};
+	}
+
+	return { eventType: null, session: null };
 }

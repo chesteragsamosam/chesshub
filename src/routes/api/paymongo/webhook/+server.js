@@ -1,6 +1,11 @@
 import { json } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
-import { verifyWebhookSignature } from '$lib/server/paymongo';
+import {
+	verifyWebhookSignature,
+	parseWebhookEvent,
+	getPaidPaymentId,
+	isCheckoutSessionPaid
+} from '$lib/server/paymongo';
 import { getRegistrationByCheckoutSession, updateRegistration } from '$lib/server/db/queries';
 
 /** @type {import('./$types').RequestHandler} */
@@ -17,7 +22,7 @@ export async function POST(event) {
 		return json({ error: 'Invalid signature' }, { status: 400 });
 	}
 
-	/** @type {{ data?: { type?: string, data?: { id?: string, attributes?: Record<string, unknown> } } }} */
+	/** @type {unknown} */
 	let payload;
 	try {
 		payload = JSON.parse(rawBody);
@@ -25,21 +30,30 @@ export async function POST(event) {
 		return json({ error: 'Invalid JSON' }, { status: 400 });
 	}
 
-	const eventType = payload?.data?.type;
-	const session = payload?.data?.data;
+	const { eventType, session } = parseWebhookEvent(payload);
 
 	if (eventType === 'checkout_session.payment.paid' && session?.id) {
 		const registration = await getRegistrationByCheckoutSession(session.id);
 		if (registration && registration.status !== 'paid') {
-			const attrs = session.attributes ?? {};
-			const payments = /** @type {{ id?: string }[]} */ (attrs.payments ?? []);
-			const paymentIntent = /** @type {{ id?: string } | null} */ (attrs.payment_intent ?? null);
-			const paymentId = payments[0]?.id ?? paymentIntent?.id ?? null;
-
 			await updateRegistration(registration.id, {
 				status: 'paid',
 				paidAt: new Date(),
-				paymongoPaymentId: paymentId
+				paymongoPaymentId: getPaidPaymentId(session)
+			});
+		}
+	} else if (
+		eventType === 'payment.paid' &&
+		session &&
+		isCheckoutSessionPaid(session) &&
+		session.id
+	) {
+		// Rare: payment payload that still embeds checkout payments
+		const registration = await getRegistrationByCheckoutSession(session.id);
+		if (registration && registration.status !== 'paid') {
+			await updateRegistration(registration.id, {
+				status: 'paid',
+				paidAt: new Date(),
+				paymongoPaymentId: getPaidPaymentId(session)
 			});
 		}
 	}

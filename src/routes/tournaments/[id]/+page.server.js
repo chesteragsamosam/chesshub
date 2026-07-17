@@ -9,8 +9,44 @@ import {
 	updateRegistration
 } from '$lib/server/db/queries';
 import { requireUser } from '$lib/server/auth-guards';
-import { createCheckoutSession, isPaymongoConfigured } from '$lib/server/paymongo';
+import {
+	createCheckoutSession,
+	getCheckoutSession,
+	getPaidPaymentId,
+	isCheckoutSessionPaid,
+	isPaymongoConfigured
+} from '$lib/server/paymongo';
 import { env } from '$env/dynamic/private';
+
+/**
+ * If PayMongo already collected payment, mark the local registration paid.
+ * Used when webhooks cannot reach localhost.
+ * @param {{ id: string, status: string, paymongoCheckoutSessionId?: string | null }} registration
+ */
+async function syncRegistrationPayment(registration) {
+	if (registration.status === 'paid' || !registration.paymongoCheckoutSessionId) {
+		return registration;
+	}
+
+	try {
+		const session = await getCheckoutSession(registration.paymongoCheckoutSessionId);
+		if (!isCheckoutSessionPaid(session)) return registration;
+
+		await updateRegistration(registration.id, {
+			status: 'paid',
+			paidAt: new Date(),
+			paymongoPaymentId: getPaidPaymentId(session)
+		});
+		return {
+			...registration,
+			status: /** @type {'paid'} */ ('paid'),
+			paidAt: new Date(),
+			paymongoPaymentId: getPaidPaymentId(session)
+		};
+	} catch {
+		return registration;
+	}
+}
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load(event) {
@@ -23,12 +59,26 @@ export async function load(event) {
 		error(404, 'Tournament not found');
 	}
 
-	const [organizer, paidCount, registration, registeredPlayers] = await Promise.all([
+	const checkoutResult = event.url.searchParams.get('checkout');
+
+	let registration = event.locals.user
+		? await getRegistration(tournament.id, event.locals.user.id)
+		: null;
+
+	// Success redirect fallback: confirm with PayMongo even if webhook never arrives.
+	if (
+		checkoutResult === 'success' &&
+		registration &&
+		registration.status !== 'paid' &&
+		registration.paymongoCheckoutSessionId &&
+		isPaymongoConfigured()
+	) {
+		registration = await syncRegistrationPayment(registration);
+	}
+
+	const [organizer, paidCount, registeredPlayers] = await Promise.all([
 		getUserById(tournament.organizerId),
 		countPaidRegistrations(tournament.id),
-		event.locals.user
-			? getRegistration(tournament.id, event.locals.user.id)
-			: Promise.resolve(null),
 		listPaidRegistrations(tournament.id)
 	]);
 
@@ -55,7 +105,7 @@ export async function load(event) {
 		spotsLeft:
 			tournament.maxPlayers != null ? Math.max(0, tournament.maxPlayers - paidCount) : null,
 		paymongoConfigured: isPaymongoConfigured(),
-		checkoutResult: event.url.searchParams.get('checkout')
+		checkoutResult
 	};
 }
 
