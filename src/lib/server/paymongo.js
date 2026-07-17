@@ -24,7 +24,9 @@ async function paymongoFetch(path, opts = {}) {
 		headers: {
 			Authorization: `Basic ${auth}`,
 			'Content-Type': 'application/json',
-			Accept: 'application/json'
+			Accept: 'application/json',
+			// Harmless for api.paymongo.com; needed if a tunnel/proxy sits in front during local testing.
+			'ngrok-skip-browser-warning': 'true'
 		},
 		body: opts.body != null ? JSON.stringify(opts.body) : undefined
 	});
@@ -106,21 +108,40 @@ export async function createCheckoutSession(opts) {
 /**
  * @typedef {{
  *   id?: string,
+ *   status?: string,
  *   attributes?: {
- *     payments?: Array<{ id?: string, attributes?: { status?: string } }>,
- *     payment_intent?: { id?: string } | null,
- *     status?: string
+ *     status?: string,
+ *     payments?: Array<{
+ *       id?: string,
+ *       status?: string,
+ *       attributes?: { status?: string }
+ *     }>,
+ *     payment_intent?: {
+ *       id?: string,
+ *       status?: string,
+ *       attributes?: { status?: string }
+ *     } | null
  *   }
  * }} PaymongoCheckoutSession
  */
 
 /**
- * Retrieve a checkout session (secret key). Tries v2 then v1.
+ * @param {unknown} value
+ */
+function paymentStatus(value) {
+	if (!value || typeof value !== 'object') return null;
+	const row = /** @type {Record<string, any>} */ (value);
+	return row.attributes?.status ?? row.status ?? null;
+}
+
+/**
+ * Retrieve a checkout session (secret key). Tries v1 then v2.
  * @param {string} checkoutSessionId
  * @returns {Promise<PaymongoCheckoutSession | null>}
  */
 export async function getCheckoutSession(checkoutSessionId) {
-	for (const apiBase of [PAYMONGO_CHECKOUT_API, PAYMONGO_API]) {
+	// Official retrieve docs use v1; v2 create sessions are still readable there.
+	for (const apiBase of [PAYMONGO_API, PAYMONGO_CHECKOUT_API]) {
 		try {
 			const json = await paymongoFetch(`/checkout_sessions/${checkoutSessionId}`, { apiBase });
 			if (json?.data?.id) return /** @type {PaymongoCheckoutSession} */ (json.data);
@@ -132,21 +153,70 @@ export async function getCheckoutSession(checkoutSessionId) {
 }
 
 /**
+ * @param {string} paymentIntentId
+ * @returns {Promise<Record<string, any> | null>}
+ */
+export async function getPaymentIntent(paymentIntentId) {
+	try {
+		const json = await paymongoFetch(`/payment_intents/${paymentIntentId}`);
+		return json?.data ?? null;
+	} catch {
+		return null;
+	}
+}
+
+/**
  * @param {PaymongoCheckoutSession | null | undefined} session
  */
 export function getPaidPaymentId(session) {
 	const payments = session?.attributes?.payments ?? [];
-	const paid = payments.find((payment) => payment?.attributes?.status === 'paid');
+	const paid = payments.find((payment) => paymentStatus(payment) === 'paid');
 	return paid?.id ?? null;
 }
 
 /**
- * True when PayMongo reports at least one paid payment on the session.
+ * True when PayMongo reports the checkout as paid.
  * @param {PaymongoCheckoutSession | null | undefined} session
+ * @param {Record<string, any> | null} [paymentIntent]
  */
-export function isCheckoutSessionPaid(session) {
+export function isCheckoutSessionPaid(session, paymentIntent = null) {
 	const payments = session?.attributes?.payments ?? [];
-	return payments.some((payment) => payment?.attributes?.status === 'paid');
+	if (payments.some((payment) => paymentStatus(payment) === 'paid')) return true;
+
+	const intent = paymentIntent ?? session?.attributes?.payment_intent ?? null;
+	const intentStatus = paymentStatus(intent);
+	return intentStatus === 'succeeded' || intentStatus === 'paid';
+}
+
+/**
+ * Poll PayMongo until the checkout shows paid (or attempts exhausted).
+ * Covers the gap after GCash redirect before payments[] is populated.
+ * @param {string} checkoutSessionId
+ * @param {{ attempts?: number, delayMs?: number }} [opts]
+ */
+export async function waitForCheckoutPaid(checkoutSessionId, opts = {}) {
+	const attempts = opts.attempts ?? 6;
+	const delayMs = opts.delayMs ?? 700;
+
+	for (let i = 0; i < attempts; i++) {
+		const session = await getCheckoutSession(checkoutSessionId);
+		let intent = null;
+		const intentId = session?.attributes?.payment_intent?.id;
+		if (intentId) {
+			intent = await getPaymentIntent(intentId);
+		}
+
+		if (isCheckoutSessionPaid(session, intent)) {
+			return { session, paymentIntent: intent, paid: true };
+		}
+
+		if (i < attempts - 1) {
+			await new Promise((resolve) => setTimeout(resolve, delayMs));
+		}
+	}
+
+	const session = await getCheckoutSession(checkoutSessionId);
+	return { session, paymentIntent: null, paid: isCheckoutSessionPaid(session) };
 }
 
 /**
@@ -192,8 +262,16 @@ export function verifyWebhookSignature(rawBody, signatureHeader, webhookSecret) 
 export function parseWebhookEvent(payload) {
 	const root = /** @type {Record<string, any>} */ (payload ?? {});
 
-	// Newer hosted-checkout style: { data: { type, data: session } }
-	if (root?.data?.type && root?.data?.data) {
+	// Newest hosted-checkout style: { event_type, data: { type, data: session } }
+	if (root?.event_type && root?.data?.type) {
+		return {
+			eventType: /** @type {string} */ (root.data.type),
+			session: /** @type {PaymongoCheckoutSession | null} */ (root.data.data ?? null)
+		};
+	}
+
+	// { data: { type, data: session } }
+	if (root?.data?.type && root?.data?.type !== 'event' && root?.data?.data) {
 		return {
 			eventType: /** @type {string} */ (root.data.type),
 			session: /** @type {PaymongoCheckoutSession} */ (root.data.data)

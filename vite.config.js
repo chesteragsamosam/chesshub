@@ -8,6 +8,10 @@ import { sveltekit } from '@sveltejs/kit/vite';
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
+	server: {
+		// Allow tunneled hosts (e.g. ngrok) so PayMongo redirects/webhooks reach the dev server.
+		allowedHosts: ['.ngrok-free.app', '.ngrok.app', '.ngrok.io', '.loca.lt', '.trycloudflare.com']
+	},
 	css: {
 		preprocessorOptions: {
 			scss: {
