@@ -1,4 +1,4 @@
-import { error, fail, redirect } from '@sveltejs/kit';
+import { error, fail } from '@sveltejs/kit';
 import {
 	getTournamentById,
 	getUserById,
@@ -9,56 +9,8 @@ import {
 	updateRegistration
 } from '$lib/server/db/queries';
 import { requireUser } from '$lib/server/auth-guards';
-import {
-	createCheckoutSession,
-	getPaidPaymentId,
-	isPaymongoConfigured,
-	waitForCheckoutPaid
-} from '$lib/server/paymongo';
+import { createCheckoutSession, isPaymongoConfigured } from '$lib/server/paymongo';
 import { env } from '$env/dynamic/private';
-
-/**
- * If PayMongo already collected payment, mark the local registration paid.
- * Used when webhooks cannot reach localhost / are blocked by ngrok interstitial.
- * @param {{ id: string, status: string, paymongoCheckoutSessionId?: string | null }} registration
- * @param {{ wait?: boolean }} [opts]
- */
-async function syncRegistrationPayment(registration, opts = {}) {
-	if (registration.status === 'paid' || !registration.paymongoCheckoutSessionId) {
-		return registration;
-	}
-
-	try {
-		const result = opts.wait
-			? await waitForCheckoutPaid(registration.paymongoCheckoutSessionId)
-			: await waitForCheckoutPaid(registration.paymongoCheckoutSessionId, {
-					attempts: 1,
-					delayMs: 0
-				});
-
-		if (!result.paid) return registration;
-
-		const paymentId =
-			getPaidPaymentId(result.session) ??
-			result.paymentIntent?.id ??
-			registration.paymongoCheckoutSessionId;
-
-		await updateRegistration(registration.id, {
-			status: 'paid',
-			paidAt: new Date(),
-			paymongoPaymentId: paymentId
-		});
-
-		return {
-			...registration,
-			status: /** @type {'paid'} */ ('paid'),
-			paidAt: new Date(),
-			paymongoPaymentId: paymentId
-		};
-	} catch {
-		return registration;
-	}
-}
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load(event) {
@@ -73,21 +25,9 @@ export async function load(event) {
 
 	const checkoutResult = event.url.searchParams.get('checkout');
 
-	let registration = event.locals.user
+	const registration = event.locals.user
 		? await getRegistration(tournament.id, event.locals.user.id)
 		: null;
-
-	// Confirm with PayMongo directly — do not wait on webhooks (often blocked by ngrok).
-	if (
-		registration &&
-		registration.status !== 'paid' &&
-		registration.paymongoCheckoutSessionId &&
-		isPaymongoConfigured()
-	) {
-		registration = await syncRegistrationPayment(registration, {
-			wait: checkoutResult === 'success'
-		});
-	}
 
 	const [organizer, paidCount, registeredPlayers] = await Promise.all([
 		getUserById(tournament.organizerId),
@@ -198,6 +138,8 @@ export const actions = {
 			paymongoCheckoutSessionId: session.id
 		});
 
-		redirect(303, session.url);
+		// Return the URL so the client can open PayMongo in a new tab.
+		// Payment is confirmed via the PayMongo webhook.
+		return { success: true, checkoutUrl: session.url };
 	}
 };

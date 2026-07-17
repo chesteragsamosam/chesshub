@@ -135,88 +135,25 @@ function paymentStatus(value) {
 }
 
 /**
- * Retrieve a checkout session (secret key). Tries v1 then v2.
- * @param {string} checkoutSessionId
- * @returns {Promise<PaymongoCheckoutSession | null>}
- */
-export async function getCheckoutSession(checkoutSessionId) {
-	// Official retrieve docs use v1; v2 create sessions are still readable there.
-	for (const apiBase of [PAYMONGO_API, PAYMONGO_CHECKOUT_API]) {
-		try {
-			const json = await paymongoFetch(`/checkout_sessions/${checkoutSessionId}`, { apiBase });
-			if (json?.data?.id) return /** @type {PaymongoCheckoutSession} */ (json.data);
-		} catch {
-			// try next base
-		}
-	}
-	return null;
-}
-
-/**
- * @param {string} paymentIntentId
- * @returns {Promise<Record<string, any> | null>}
- */
-export async function getPaymentIntent(paymentIntentId) {
-	try {
-		const json = await paymongoFetch(`/payment_intents/${paymentIntentId}`);
-		return json?.data ?? null;
-	} catch {
-		return null;
-	}
-}
-
-/**
  * @param {PaymongoCheckoutSession | null | undefined} session
  */
 export function getPaidPaymentId(session) {
 	const payments = session?.attributes?.payments ?? [];
 	const paid = payments.find((payment) => paymentStatus(payment) === 'paid');
-	return paid?.id ?? null;
+	if (paid?.id) return paid.id;
+	return session?.attributes?.payment_intent?.id ?? null;
 }
 
 /**
  * True when PayMongo reports the checkout as paid.
  * @param {PaymongoCheckoutSession | null | undefined} session
- * @param {Record<string, any> | null} [paymentIntent]
  */
-export function isCheckoutSessionPaid(session, paymentIntent = null) {
+export function isCheckoutSessionPaid(session) {
 	const payments = session?.attributes?.payments ?? [];
 	if (payments.some((payment) => paymentStatus(payment) === 'paid')) return true;
 
-	const intent = paymentIntent ?? session?.attributes?.payment_intent ?? null;
-	const intentStatus = paymentStatus(intent);
+	const intentStatus = paymentStatus(session?.attributes?.payment_intent ?? null);
 	return intentStatus === 'succeeded' || intentStatus === 'paid';
-}
-
-/**
- * Poll PayMongo until the checkout shows paid (or attempts exhausted).
- * Covers the gap after GCash redirect before payments[] is populated.
- * @param {string} checkoutSessionId
- * @param {{ attempts?: number, delayMs?: number }} [opts]
- */
-export async function waitForCheckoutPaid(checkoutSessionId, opts = {}) {
-	const attempts = opts.attempts ?? 6;
-	const delayMs = opts.delayMs ?? 700;
-
-	for (let i = 0; i < attempts; i++) {
-		const session = await getCheckoutSession(checkoutSessionId);
-		let intent = null;
-		const intentId = session?.attributes?.payment_intent?.id;
-		if (intentId) {
-			intent = await getPaymentIntent(intentId);
-		}
-
-		if (isCheckoutSessionPaid(session, intent)) {
-			return { session, paymentIntent: intent, paid: true };
-		}
-
-		if (i < attempts - 1) {
-			await new Promise((resolve) => setTimeout(resolve, delayMs));
-		}
-	}
-
-	const session = await getCheckoutSession(checkoutSessionId);
-	return { session, paymentIntent: null, paid: isCheckoutSessionPaid(session) };
 }
 
 /**

@@ -1,9 +1,13 @@
 <script>
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
+	import { invalidateAll } from '$app/navigation';
 	import UserAvatar from '$lib/components/UserAvatar.svelte';
 
 	let { data, form } = $props();
+
+	let submitting = $state(false);
+	let checkoutUrl = $state('');
 
 	/** @param {number} cents @param {string} currency */
 	function formatFee(cents, currency) {
@@ -25,6 +29,52 @@
 			minute: '2-digit'
 		});
 	}
+
+	const isPaid = $derived(data.tournament.entryFeeCents > 0);
+
+	// While a paid registration is pending, poll so the webhook-confirmed
+	// status appears without a manual refresh.
+	$effect(() => {
+		if (!isPaid) return;
+		if (data.registration?.status !== 'pending') return;
+
+		const timer = setInterval(() => {
+			if (document.visibilityState === 'visible') {
+				invalidateAll();
+			}
+		}, 5000);
+
+		return () => clearInterval(timer);
+	});
+
+	function submitRegister() {
+		submitting = true;
+		checkoutUrl = '';
+		// Open the tab synchronously (in the click handler) so the browser
+		// does not block the popup. We set its URL once the server responds.
+		const checkoutTab = isPaid ? window.open('', '_blank') : null;
+
+		return async (
+			/** @type {{ result: any, update: () => Promise<void> }} */ { result, update }
+		) => {
+			submitting = false;
+
+			if (result.type === 'success' && result.data?.checkoutUrl) {
+				checkoutUrl = result.data.checkoutUrl;
+				if (checkoutTab && !checkoutTab.closed) {
+					checkoutTab.location.href = result.data.checkoutUrl;
+				} else {
+					window.open(result.data.checkoutUrl, '_blank');
+				}
+				// Refresh registration status (webhook confirms payment separately).
+				await invalidateAll();
+				return;
+			}
+
+			checkoutTab?.close();
+			await update();
+		};
+	}
 </script>
 
 <article class="page stack">
@@ -44,8 +94,8 @@
 			<p class="alert alert-success">Payment confirmed. You are registered for this tournament.</p>
 		{:else}
 			<p class="alert alert-warning">
-				Checkout completed, but payment is not confirmed yet. Refresh this page in a moment. If it
-				stays pending, PayMongo could not reach this server’s webhook (common on localhost).
+				Payment is being confirmed by PayMongo. This page will update automatically once the payment
+				webhook is received.
 			</p>
 		{/if}
 	{:else if data.checkoutResult === 'cancelled'}
@@ -55,7 +105,7 @@
 	{#if form?.message}
 		<p class="alert alert-error">{form.message}</p>
 	{/if}
-	{#if form?.success}
+	{#if form?.free}
 		<p class="alert alert-success">You are registered.</p>
 	{/if}
 
@@ -143,18 +193,33 @@
 			{:else if !data.user}
 				<a href={resolve('/login')} class="btn btn-primary btn-block">Sign in to register</a>
 			{:else}
-				<form method="post" action="?/register" use:enhance>
-					<button type="submit" class="btn btn-primary btn-block">
-						{#if data.tournament.entryFeeCents > 0}
-							{data.registration?.status === 'pending'
-								? 'Continue GCash payment'
-								: 'Pay with GCash'}
+				<form method="post" action="?/register" use:enhance={submitRegister}>
+					<button type="submit" class="btn btn-primary btn-block" disabled={submitting}>
+						{#if isPaid}
+							{#if submitting}
+								Starting checkout…
+							{:else if data.registration?.status === 'pending'}
+								Continue GCash payment
+							{:else}
+								Pay with GCash
+							{/if}
 						{:else}
 							Register for free
 						{/if}
 					</button>
 				</form>
-				{#if data.tournament.entryFeeCents > 0 && !data.paymongoConfigured}
+				{#if isPaid && (checkoutUrl || data.registration?.status === 'pending')}
+					<p class="hint">
+						Complete your payment in the new tab.
+						{#if checkoutUrl}
+							Didn’t see it?
+							<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+							<a href={checkoutUrl} target="_blank" rel="noopener" class="link">Open checkout</a>.
+						{/if}
+						This page updates automatically once PayMongo confirms your payment.
+					</p>
+				{/if}
+				{#if isPaid && !data.paymongoConfigured}
 					<p class="hint">PayMongo is not configured on this server yet.</p>
 				{/if}
 			{/if}
