@@ -89,4 +89,6 @@ Entry fees use PayMongo Hosted Checkout with **GCash** and **PHP** only. ChessHu
 4. Add a webhook endpoint pointing to `https://your-domain/api/paymongo/webhook` and subscribe to `checkout_session.payment.paid`.
 5. Copy the webhook signing secret into `PAYMONGO_WEBHOOK_SECRET`.
 
-For local development, expose your app with a tunnel (e.g. ngrok) and register that URL as the webhook endpoint.
+ChessHub also confirms payment when the player returns to the success URL (by retrieving the Checkout Session). That covers local development where PayMongo cannot reach `localhost` webhooks. For production, still configure the webhook.
+
+For local development, expose your app with a tunnel (e.g. ngrok) and register that URL as the webhook endpoint if you want webhook-only confirmation.

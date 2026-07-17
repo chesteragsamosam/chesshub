@@ -4,12 +4,61 @@ import {
 	getUserById,
 	getRegistration,
 	countPaidRegistrations,
+	listPaidRegistrations,
 	createRegistration,
 	updateRegistration
 } from '$lib/server/db/queries';
 import { requireUser } from '$lib/server/auth-guards';
-import { createCheckoutSession, isPaymongoConfigured } from '$lib/server/paymongo';
+import {
+	createCheckoutSession,
+	getPaidPaymentId,
+	isPaymongoConfigured,
+	waitForCheckoutPaid
+} from '$lib/server/paymongo';
 import { env } from '$env/dynamic/private';
+
+/**
+ * If PayMongo already collected payment, mark the local registration paid.
+ * Used when webhooks cannot reach localhost / are blocked by ngrok interstitial.
+ * @param {{ id: string, status: string, paymongoCheckoutSessionId?: string | null }} registration
+ * @param {{ wait?: boolean }} [opts]
+ */
+async function syncRegistrationPayment(registration, opts = {}) {
+	if (registration.status === 'paid' || !registration.paymongoCheckoutSessionId) {
+		return registration;
+	}
+
+	try {
+		const result = opts.wait
+			? await waitForCheckoutPaid(registration.paymongoCheckoutSessionId)
+			: await waitForCheckoutPaid(registration.paymongoCheckoutSessionId, {
+					attempts: 1,
+					delayMs: 0
+				});
+
+		if (!result.paid) return registration;
+
+		const paymentId =
+			getPaidPaymentId(result.session) ??
+			result.paymentIntent?.id ??
+			registration.paymongoCheckoutSessionId;
+
+		await updateRegistration(registration.id, {
+			status: 'paid',
+			paidAt: new Date(),
+			paymongoPaymentId: paymentId
+		});
+
+		return {
+			...registration,
+			status: /** @type {'paid'} */ ('paid'),
+			paidAt: new Date(),
+			paymongoPaymentId: paymentId
+		};
+	} catch {
+		return registration;
+	}
+}
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load(event) {
@@ -22,10 +71,28 @@ export async function load(event) {
 		error(404, 'Tournament not found');
 	}
 
-	const [organizer, paidCount, registration] = await Promise.all([
+	const checkoutResult = event.url.searchParams.get('checkout');
+
+	let registration = event.locals.user
+		? await getRegistration(tournament.id, event.locals.user.id)
+		: null;
+
+	// Confirm with PayMongo directly — do not wait on webhooks (often blocked by ngrok).
+	if (
+		registration &&
+		registration.status !== 'paid' &&
+		registration.paymongoCheckoutSessionId &&
+		isPaymongoConfigured()
+	) {
+		registration = await syncRegistrationPayment(registration, {
+			wait: checkoutResult === 'success'
+		});
+	}
+
+	const [organizer, paidCount, registeredPlayers] = await Promise.all([
 		getUserById(tournament.organizerId),
 		countPaidRegistrations(tournament.id),
-		event.locals.user ? getRegistration(tournament.id, event.locals.user.id) : Promise.resolve(null)
+		listPaidRegistrations(tournament.id)
 	]);
 
 	return {
@@ -40,10 +107,18 @@ export async function load(event) {
 			: null,
 		paidCount,
 		registration,
+		registeredPlayers: registeredPlayers.map((player) => ({
+			id: player.userId,
+			name: player.name,
+			username: player.username,
+			slug: player.username || player.userId,
+			image: player.image,
+			paidAt: player.paidAt
+		})),
 		spotsLeft:
 			tournament.maxPlayers != null ? Math.max(0, tournament.maxPlayers - paidCount) : null,
 		paymongoConfigured: isPaymongoConfigured(),
-		checkoutResult: event.url.searchParams.get('checkout')
+		checkoutResult
 	};
 }
 
@@ -58,7 +133,7 @@ export const actions = {
 
 		const existing = await getRegistration(tournament.id, user.id);
 		if (existing?.status === 'paid') {
-			return fail(400, { message: 'You are already registered' });
+			return fail(400, { message: 'You are already registered for this tournament' });
 		}
 
 		const paidCount = await countPaidRegistrations(tournament.id);
@@ -66,13 +141,20 @@ export const actions = {
 			return fail(400, { message: 'This tournament is full' });
 		}
 
-		// Free tournament — register immediately
+		// Free tournament — register immediately (one paid row per user)
 		if (tournament.entryFeeCents <= 0) {
 			if (existing) {
-				await updateRegistration(existing.id, { status: 'paid', paidAt: new Date() });
+				if (existing.status !== 'paid') {
+					await updateRegistration(existing.id, { status: 'paid', paidAt: new Date() });
+				}
 			} else {
 				const reg = await createRegistration(tournament.id, user.id);
-				await updateRegistration(reg.id, { status: 'paid', paidAt: new Date() });
+				if (!reg) {
+					return fail(500, { message: 'Could not create registration' });
+				}
+				if (reg.status !== 'paid') {
+					await updateRegistration(reg.id, { status: 'paid', paidAt: new Date() });
+				}
 			}
 			return { success: true, free: true };
 		}
@@ -91,6 +173,10 @@ export const actions = {
 		} else if (registration.status === 'cancelled' || registration.status === 'refunded') {
 			await updateRegistration(registration.id, { status: 'pending' });
 			registration = await getRegistration(tournament.id, user.id);
+		}
+
+		if (!registration || registration.status === 'paid') {
+			return fail(400, { message: 'You are already registered for this tournament' });
 		}
 
 		const origin = env.ORIGIN || event.url.origin;
