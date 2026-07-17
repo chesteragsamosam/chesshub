@@ -11,11 +11,13 @@ cp .env.example .env
 ```
 
 Required:
+
 - `DATABASE_URL` — MySQL connection string
 - `ORIGIN` — e.g. `http://localhost:5173`
 - `BETTER_AUTH_SECRET` — long random string
 
 Optional:
+
 - `LICHESS_CLIENT_ID` — Lichess OAuth app client id (PKCE; no secret)
 - `PAYMONGO_SECRET_KEY` / `PAYMONGO_WEBHOOK_SECRET` — paid tournament registration (GCash)
 
@@ -48,10 +50,10 @@ SEED_FORCE=1 pnpm db:seed
 
 **Admin login**
 
-| Field | Value |
-|-------|-------|
-| Email | `admin@chesshub.local` |
-| Password | `ChessHubAdmin1!` |
+| Field    | Value                  |
+| -------- | ---------------------- |
+| Email    | `admin@chesshub.local` |
+| Password | `ChessHubAdmin1!`      |
 
 Mock players use emails `mock-001@chesshub.local` through `mock-300@chesshub.local` with password `MockPlayer1!`.
 
@@ -65,15 +67,15 @@ UPDATE user SET role = 'admin' WHERE email = 'you@example.com';
 
 ## Main routes
 
-| Path | Purpose |
-|------|---------|
-| `/settings/profile` | Link chess + social accounts, set username |
-| `/profile/[username]` | Public shareable profile |
-| `/players` | Search players by name/username |
-| `/organizer/apply` | Request organizer access |
-| `/admin/organizer-requests` | Approve organizers |
-| `/organizer` | Create/manage tournaments |
-| `/api/paymongo/webhook` | PayMongo webhooks |
+| Path                        | Purpose                                    |
+| --------------------------- | ------------------------------------------ |
+| `/settings/profile`         | Link chess + social accounts, set username |
+| `/profile/[username]`       | Public shareable profile                   |
+| `/players`                  | Search players by name/username            |
+| `/organizer/apply`          | Request organizer access                   |
+| `/admin/organizer-requests` | Approve organizers                         |
+| `/organizer`                | Create/manage tournaments                  |
+| `/api/paymongo/webhook`     | PayMongo webhooks                          |
 
 ## PayMongo (paid tournaments)
 

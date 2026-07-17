@@ -25,9 +25,7 @@ export async function load(event) {
 	const [organizer, paidCount, registration] = await Promise.all([
 		getUserById(tournament.organizerId),
 		countPaidRegistrations(tournament.id),
-		event.locals.user
-			? getRegistration(tournament.id, event.locals.user.id)
-			: Promise.resolve(null)
+		event.locals.user ? getRegistration(tournament.id, event.locals.user.id) : Promise.resolve(null)
 	]);
 
 	return {
@@ -43,9 +41,7 @@ export async function load(event) {
 		paidCount,
 		registration,
 		spotsLeft:
-			tournament.maxPlayers != null
-				? Math.max(0, tournament.maxPlayers - paidCount)
-				: null,
+			tournament.maxPlayers != null ? Math.max(0, tournament.maxPlayers - paidCount) : null,
 		paymongoConfigured: isPaymongoConfigured(),
 		checkoutResult: event.url.searchParams.get('checkout')
 	};

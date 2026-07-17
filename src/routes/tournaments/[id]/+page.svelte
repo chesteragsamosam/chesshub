@@ -71,7 +71,12 @@
 					<div>
 						<dt>Venue</dt>
 						<dd>
-							{[data.tournament.venue, data.tournament.city, data.tournament.state, data.tournament.country]
+							{[
+								data.tournament.venue,
+								data.tournament.city,
+								data.tournament.state,
+								data.tournament.country
+							]
 								.filter(Boolean)
 								.join(', ') || 'TBA'}
 						</dd>

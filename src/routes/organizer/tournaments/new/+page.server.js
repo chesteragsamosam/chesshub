@@ -58,7 +58,8 @@ export const actions = {
 		if (publish) {
 			if (entryFeeCents > 0 && !isPaymongoConfigured()) {
 				return fail(400, {
-					message: 'PayMongo is not configured. Set PAYMONGO_SECRET_KEY before publishing paid tournaments'
+					message:
+						'PayMongo is not configured. Set PAYMONGO_SECRET_KEY before publishing paid tournaments'
 				});
 			}
 			status = 'published';

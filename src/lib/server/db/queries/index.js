@@ -313,9 +313,7 @@ export async function followUser(followerId, followingId) {
 export async function unfollowUser(followerId, followingId) {
 	await db
 		.delete(userFollow)
-		.where(
-			and(eq(userFollow.followerId, followerId), eq(userFollow.followingId, followingId))
-		);
+		.where(and(eq(userFollow.followerId, followerId), eq(userFollow.followingId, followingId)));
 }
 
 /**
@@ -326,9 +324,7 @@ export async function isFollowing(followerId, followingId) {
 	const [row] = await db
 		.select({ id: userFollow.id })
 		.from(userFollow)
-		.where(
-			and(eq(userFollow.followerId, followerId), eq(userFollow.followingId, followingId))
-		)
+		.where(and(eq(userFollow.followerId, followerId), eq(userFollow.followingId, followingId)))
 		.limit(1);
 	return Boolean(row);
 }
@@ -495,9 +491,7 @@ export async function recommendUsersToFollow(viewerId, limit = 10) {
 			.from(userFollow)
 			.innerJoin(user, eq(user.id, userFollow.followingId))
 			.leftJoin(profile, eq(profile.userId, user.id))
-			.where(
-				and(inArray(userFollow.followerId, followingIds), not(inArray(user.id, excludeIds)))
-			)
+			.where(and(inArray(userFollow.followerId, followingIds), not(inArray(user.id, excludeIds))))
 			.limit(50);
 
 		for (const candidate of secondDegree) {

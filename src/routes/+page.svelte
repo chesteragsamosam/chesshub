@@ -28,9 +28,7 @@
 <section class="page features">
 	<div class="feature">
 		<h2 class="section-title">Chess profiles</h2>
-		<p>
-			Connect Lichess, Chess.com, and FIDE so organizers and opponents can find you.
-		</p>
+		<p>Connect Lichess, Chess.com, and FIDE so organizers and opponents can find you.</p>
 	</div>
 	<div class="feature">
 		<h2 class="section-title">Local tournaments</h2>
@@ -53,8 +51,16 @@
 		overflow: hidden;
 		color: $color-text;
 		background:
-			radial-gradient(ellipse 70% 55% at 85% 15%, color-mix(in srgb, $color-accent-glow 22%, transparent), transparent 55%),
-			radial-gradient(ellipse 50% 40% at 10% 80%, color-mix(in srgb, $color-primary 10%, transparent), transparent 50%),
+			radial-gradient(
+				ellipse 70% 55% at 85% 15%,
+				color-mix(in srgb, $color-accent-glow 22%, transparent),
+				transparent 55%
+			),
+			radial-gradient(
+				ellipse 50% 40% at 10% 80%,
+				color-mix(in srgb, $color-primary 10%, transparent),
+				transparent 50%
+			),
 			linear-gradient(165deg, $color-ink 0%, $color-hero 52%, $color-hero-mist 100%);
 	}
 
