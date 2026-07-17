@@ -1,0 +1,38 @@
+// Spacing / radius / layout — always alias Tailwind theme scales (never raw rem/px)
+$space-1: calc(var(--spacing) * 1);
+$space-2: calc(var(--spacing) * 2);
+$space-3: calc(var(--spacing) * 3);
+$space-4: calc(var(--spacing) * 4);
+$space-5: calc(var(--spacing) * 5);
+$space-6: calc(var(--spacing) * 6);
+$space-8: calc(var(--spacing) * 8);
+$space-10: calc(var(--spacing) * 10);
+$space-12: calc(var(--spacing) * 12);
+$space-16: calc(var(--spacing) * 16);
+$space-20: calc(var(--spacing) * 20);
+$space-24: calc(var(--spacing) * 24);
+
+$radius-sm: var(--radius-sm);
+$radius-md: var(--radius-md);
+$radius-lg: var(--radius-lg);
+$radius-xl: var(--radius-xl);
+$radius-full: 50%;
+
+$size-container-sm: var(--container-md);
+$size-container-md: var(--container-2xl);
+$size-container-lg: var(--container-6xl);
+$size-header: calc(var(--spacing) * 16);
+$size-touch-min: calc(var(--spacing) * 11);
+
+// Match Tailwind `border` utility (hairline). No theme token exists for this.
+$border-width: thin;
+$duration-fast: var(--default-transition-duration);
+$duration-base: calc(var(--default-transition-duration) * 2);
+$ease-out: var(--ease-out);
+
+// Tailwind breakpoint values for SCSS @media (custom properties cannot be used in @media)
+$breakpoint-sm: 40rem;
+$breakpoint-md: 48rem;
+$breakpoint-lg: 64rem;
+$breakpoint-xl: 80rem;
+

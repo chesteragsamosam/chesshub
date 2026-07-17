@@ -1,0 +1,99 @@
+@import 'tailwindcss';
+@plugin '@tailwindcss/forms';
+@plugin '@tailwindcss/typography';
+
+@theme {
+	--font-sans: 'Figtree', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+		'Segoe UI Symbol', 'Noto Color Emoji';
+	--font-display: 'Syne', ui-sans-serif, system-ui, sans-serif;
+
+	/* Obsidian Volt semantic theme (resolved at runtime via data-theme) */
+	--color-canvas: var(--theme-bg);
+	--color-panel: var(--theme-surface);
+	--color-ink: var(--theme-ink);
+	--color-muted: var(--theme-text-muted);
+	--color-line: var(--theme-border);
+	--color-brand: var(--theme-primary);
+	--color-brand-hover: var(--theme-primary-hover);
+	--color-brand-soft: var(--theme-primary-soft);
+	--color-on-brand: var(--theme-on-primary);
+	--color-hero: var(--theme-hero);
+	--color-hero-mist: var(--theme-hero-mist);
+	--color-danger: var(--theme-danger);
+	--color-success: var(--theme-success);
+	--color-warning: var(--theme-warning);
+	--color-accent-glow: var(--theme-accent-glow);
+}
+
+@layer base {
+	/* Dark theme (default) */
+	:root,
+	:root[data-theme='dark'] {
+		color-scheme: dark;
+
+		--theme-bg: var(--color-slate-950);
+		--theme-surface: var(--color-slate-900);
+		--theme-text: var(--color-slate-50);
+		--theme-text-muted: var(--color-slate-400);
+		--theme-border: var(--color-slate-700);
+		--theme-primary: var(--color-cyan-400);
+		--theme-primary-hover: var(--color-cyan-300);
+		--theme-primary-soft: var(--color-cyan-950);
+		--theme-on-primary: var(--color-slate-950);
+		--theme-ink: var(--color-slate-950);
+		--theme-hero: var(--color-slate-900);
+		--theme-hero-mist: var(--color-slate-800);
+		--theme-danger: var(--color-rose-400);
+		--theme-danger-soft: var(--color-rose-950);
+		--theme-success: var(--color-emerald-400);
+		--theme-success-soft: var(--color-emerald-950);
+		--theme-warning: var(--color-amber-400);
+		--theme-warning-soft: var(--color-amber-950);
+		--theme-board-light: var(--color-slate-600);
+		--theme-board-dark: var(--color-slate-950);
+		--theme-accent-glow: var(--color-cyan-500);
+	}
+
+	:root[data-theme='light'] {
+		color-scheme: light;
+
+		--theme-bg: var(--color-slate-50);
+		--theme-surface: var(--color-slate-100);
+		--theme-text: var(--color-slate-900);
+		--theme-text-muted: var(--color-slate-500);
+		--theme-border: var(--color-slate-300);
+		--theme-primary: var(--color-cyan-600);
+		--theme-primary-hover: var(--color-cyan-700);
+		--theme-primary-soft: var(--color-cyan-50);
+		--theme-on-primary: var(--color-slate-50);
+		--theme-ink: var(--color-slate-900);
+		--theme-hero: var(--color-slate-100);
+		--theme-hero-mist: var(--color-slate-200);
+		--theme-danger: var(--color-rose-600);
+		--theme-danger-soft: var(--color-rose-50);
+		--theme-success: var(--color-emerald-600);
+		--theme-success-soft: var(--color-emerald-50);
+		--theme-warning: var(--color-amber-600);
+		--theme-warning-soft: var(--color-amber-50);
+		--theme-board-light: var(--color-slate-300);
+		--theme-board-dark: var(--color-slate-600);
+		--theme-accent-glow: var(--color-cyan-500);
+	}
+
+	html {
+		scroll-behavior: smooth;
+	}
+
+	body {
+		margin: 0;
+		min-height: 100dvh;
+		font-family: var(--font-sans);
+		color: var(--theme-text);
+		background: var(--theme-bg);
+		-webkit-font-smoothing: antialiased;
+	}
+
+	a {
+		color: inherit;
+	}
+}

@@ -1,0 +1,45 @@
+@use 'variables' as *;
+
+// Semantic CSS custom properties — aliases of Tailwind theme values for non-SCSS use
+:root {
+	--color-bg: #{$color-bg};
+	--color-surface: #{$color-surface};
+	--color-text: #{$color-text};
+	--color-text-muted: #{$color-text-muted};
+	--color-border: #{$color-border};
+	--color-primary: #{$color-primary};
+	--color-primary-hover: #{$color-primary-hover};
+	--color-primary-soft: #{$color-primary-soft};
+	--color-on-primary: #{$color-on-primary};
+	--color-accent-glow: #{$color-accent-glow};
+	--color-ink: #{$color-ink};
+	--color-hero: #{$color-hero};
+	--color-hero-mist: #{$color-hero-mist};
+	--color-danger: #{$color-danger};
+	--color-danger-soft: #{$color-danger-soft};
+	--color-success: #{$color-success};
+	--color-success-soft: #{$color-success-soft};
+	--color-warning: #{$color-warning};
+	--color-warning-soft: #{$color-warning-soft};
+	--color-board-light: #{$color-board-light};
+	--color-board-dark: #{$color-board-dark};
+
+	--space-1: #{$space-1};
+	--space-2: #{$space-2};
+	--space-3: #{$space-3};
+	--space-4: #{$space-4};
+	--space-5: #{$space-5};
+	--space-6: #{$space-6};
+	--space-8: #{$space-8};
+	--space-10: #{$space-10};
+	--space-12: #{$space-12};
+	--space-16: #{$space-16};
+	--space-20: #{$space-20};
+	--space-24: #{$space-24};
+
+	--size-container-sm: #{$size-container-sm};
+	--size-container-md: #{$size-container-md};
+	--size-container-lg: #{$size-container-lg};
+	--size-header: #{$size-header};
+	--size-touch-min: #{$size-touch-min};
+}

@@ -1,0 +1,26 @@
+// Typography — always alias Tailwind theme tokens (never raw rem/unitless hardcodes)
+$font-display: var(--font-display);
+$font-sans: var(--font-sans);
+
+$font-size-xs: var(--text-xs);
+$font-size-sm: var(--text-sm);
+$font-size-base: var(--text-base);
+$font-size-lg: var(--text-lg);
+$font-size-xl: var(--text-xl);
+$font-size-2xl: var(--text-2xl);
+$font-size-3xl: var(--text-3xl);
+$font-size-4xl: var(--text-4xl);
+$font-size-5xl: var(--text-5xl);
+
+$font-weight-normal: var(--font-weight-normal);
+$font-weight-medium: var(--font-weight-medium);
+$font-weight-semibold: var(--font-weight-semibold);
+$font-weight-bold: var(--font-weight-bold);
+$font-weight-extrabold: var(--font-weight-extrabold);
+
+$line-height-tight: var(--leading-tight);
+$line-height-snug: var(--leading-snug);
+$line-height-normal: var(--leading-normal);
+$line-height-relaxed: var(--leading-relaxed);
+$letter-spacing-tight: var(--tracking-tight);
+$letter-spacing-wide: var(--tracking-wide);

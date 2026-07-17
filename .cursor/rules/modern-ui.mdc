@@ -1,0 +1,86 @@
+---
+description: Modern mobile-first UI with Tailwind + SCSS design tokens
+globs: "**/*.{svelte,css,scss}"
+alwaysApply: false
+---
+
+# Modern UI (Mobile-First + Tailwind + SCSS)
+
+Prefer a modern, clean UI. Build **mobile-first**, then enhance with breakpoints (`sm:`, `md:`, `lg:`, `xl:`). Use Tailwind for layout utilities in markup. Use SCSS for component styles, and **always** pull values from the shared variable files — never hard-code colors, sizes, or fonts that already exist as tokens.
+
+## SCSS & Design Tokens
+
+Token files live under `src/lib/styles/variables/`:
+
+- `_colors.scss` — colors
+- `_sizes.scss` — spacing, radius, container/touch sizes
+- `_fonts.scss` — font family, sizes, weights, line heights
+- `_index.scss` — forwards all of the above
+
+**Source of truth is Tailwind theme scales.** SCSS variables must alias Tailwind CSS variables — never hard-code hex, rem, or px:
+
+- Colors → semantic `$color-*` / `var(--color-brand)` (Obsidian Volt: slate + cyan — see `color-palette.mdc`), never raw hex
+- Spacing → `calc(var(--spacing) * N)`
+- Type → `var(--text-sm)`, `var(--font-weight-semibold)`, `var(--leading-normal)`, `var(--tracking-tight)`
+- Radius → `var(--radius-md)`, containers → `var(--container-6xl)`
+- Breakpoints (SCSS `@media` only) → `$breakpoint-sm` / `md` / `lg` / `xl` (match Tailwind `--breakpoint-*`)
+
+Semantic CSS custom properties are emitted from `src/lib/styles/tokens.scss` (imported in the root layout).
+
+### Required patterns
+
+- Component styles use `<style lang="scss">` (not plain CSS).
+- At the top of every SCSS block/file that needs tokens: `@use 'lib/styles/variables' as *;`
+- Reference `$color-*`, `$space-*`, `$font-*`, `$radius-*`, `$size-*`, `$breakpoint-*`.
+- If a value is missing, **add a Tailwind-aliased token** in the correct variables file first. Do not invent local magic numbers.
+
+```svelte
+<!-- ❌ BAD -->
+<style>
+	.panel {
+		color: #0f172a;
+		padding: 17px;
+		font-size: 15px;
+	}
+</style>
+
+<!-- ✅ GOOD -->
+<style lang="scss">
+	@use 'lib/styles/variables' as *;
+
+	.panel {
+		color: $color-text;
+		padding: $space-4;
+		font-size: $font-size-sm;
+	}
+</style>
+```
+
+## Layout & Responsiveness
+
+- Default styles target small screens; add larger breakpoints only when needed.
+- Prefer flex/grid + gap over fixed widths and absolute positioning.
+- Use fluid containers (`w-full`, `max-w-*`, `mx-auto`) and percentage/fr-based layouts.
+- Touch targets and stacking should work on narrow viewports before desktop refinements.
+
+```svelte
+<!-- ❌ BAD: desktop-first, fixed width -->
+<div class="w-[960px] flex-row gap-[18px]">...</div>
+
+<!-- ✅ GOOD: mobile-first, fluid -->
+<div class="flex w-full max-w-6xl flex-col gap-4 md:flex-row md:gap-6">...</div>
+```
+
+## Spacing, Sizing & Units
+
+- Prefer Tailwind utilities in markup (`p-4`, `gap-6`, `text-sm`, `bg-[var(--color-brand)]`) and SCSS `$` aliases of those same theme tokens in `<style lang="scss">`.
+- Never introduce raw hex / rem / px in variable files — alias Tailwind theme CSS variables instead.
+- Prefer relative/fluid units: `%`, `fr`, `svh`/`dvh`, `max-w-*` + `w-full`.
+- Reserve arbitrary Tailwind values (`[]`) for rare cases; if a value repeats, add a Tailwind-aliased SCSS token.
+
+## Visual Quality
+
+- Keep hierarchy clear: one primary action per section, restrained color, consistent type scale.
+- Prefer shared color/spacing/font tokens over one-off palettes. Follow Obsidian Volt (`color-palette.mdc`).
+- Do not introduce dense card grids, pill clusters, or decorative chrome unless the interaction needs it.
+- Ensure layouts remain usable without horizontal scroll on common phone widths.

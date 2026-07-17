@@ -1,0 +1,22 @@
+// Theme-aware semantic colors — palette values live in layout.css (--theme-*)
+$color-bg: var(--theme-bg);
+$color-surface: var(--theme-surface);
+$color-text: var(--theme-text);
+$color-text-muted: var(--theme-text-muted);
+$color-border: var(--theme-border);
+$color-primary: var(--theme-primary);
+$color-primary-hover: var(--theme-primary-hover);
+$color-primary-soft: var(--theme-primary-soft);
+$color-on-primary: var(--theme-on-primary);
+$color-ink: var(--theme-ink);
+$color-hero: var(--theme-hero);
+$color-hero-mist: var(--theme-hero-mist);
+$color-danger: var(--theme-danger);
+$color-danger-soft: var(--theme-danger-soft);
+$color-success: var(--theme-success);
+$color-success-soft: var(--theme-success-soft);
+$color-warning: var(--theme-warning);
+$color-warning-soft: var(--theme-warning-soft);
+$color-board-light: var(--theme-board-light);
+$color-board-dark: var(--theme-board-dark);
+$color-accent-glow: var(--theme-accent-glow);

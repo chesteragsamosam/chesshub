@@ -1,0 +1,43 @@
+---
+description: Obsidian Volt color palette — dark slate + electric cyan for ChessHub UI
+globs: "**/*.{svelte,css,scss}"
+alwaysApply: false
+---
+
+# Obsidian Volt Color Palette
+
+ChessHub uses a high-tech dark theme: deep slate for trust/security, electric cyan for intelligence and modernity. Do not invent ad-hoc colors — extend tokens in `src/lib/styles/variables/_colors.scss` and mirror semantics in `src/routes/layout.css` / `tokens.scss`.
+
+## Token map (Tailwind aliases only)
+
+| Role | Token | Tailwind |
+|------|--------|----------|
+| Canvas | `$color-bg` | `slate-950` |
+| Panel | `$color-surface` | `slate-900` |
+| Text | `$color-text` | `slate-50` |
+| Muted | `$color-text-muted` | `slate-400` |
+| Border | `$color-border` | `slate-700` |
+| Accent | `$color-primary` | `cyan-400` |
+| Accent hover | `$color-primary-hover` | `cyan-300` |
+| Accent soft | `$color-primary-soft` | `cyan-950` |
+| On accent | `$color-on-primary` | `slate-950` |
+| Glow | `$color-accent-glow` | `cyan-500` |
+| Danger / Success / Warning | rose-400 / emerald-400 / amber-400 (+ `*-950` soft) |
+
+## Rules
+
+- Prefer `$color-*` / semantic `--color-*` over raw `slate-*` / `cyan-*` in components.
+- Primary CTAs: `$color-primary` fill + `$color-on-primary` text (never light text on cyan).
+- Surfaces stay dark; use cyan sparsely for links, focus, active nav, and primary actions.
+- Soft backgrounds for alerts/badges use `*-soft` tokens (`*-950`), not light `*-50` tints.
+- Atmosphere: subtle cyan radial glows on shell/hero only — no purple gradients, no neon glow stacks.
+- Avoid: emerald-as-brand, cream/warm paper, purple-indigo themes, white card chrome.
+
+```svelte
+<!-- ❌ BAD -->
+<button class="bg-emerald-700 text-white">Save</button>
+
+<!-- ✅ GOOD -->
+<button class="btn btn-primary">Save</button>
+<!-- or SCSS: background: $color-primary; color: $color-on-primary; -->
+```
