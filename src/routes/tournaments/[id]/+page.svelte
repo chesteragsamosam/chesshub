@@ -1,6 +1,7 @@
 <script>
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
+	import UserAvatar from '$lib/components/UserAvatar.svelte';
 
 	let { data, form } = $props();
 
@@ -101,6 +102,29 @@
 					<p class="about">{data.tournament.description}</p>
 				</section>
 			{/if}
+
+			<section class="panel">
+				<h2 class="section-title">Registered players</h2>
+				{#if data.registeredPlayers.length === 0}
+					<p class="empty-players">No players registered yet.</p>
+				{:else}
+					<ul class="player-list">
+						{#each data.registeredPlayers as player (player.id)}
+							<li>
+								<a href={resolve(`/profile/${player.slug}`)} class="player-link">
+									<UserAvatar name={player.name} image={player.image} size="sm" />
+									<span class="player-meta">
+										<span class="player-name">{player.name}</span>
+										{#if player.username}
+											<span class="player-username">@{player.username}</span>
+										{/if}
+									</span>
+								</a>
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</section>
 		</div>
 
 		<aside class="panel register">
@@ -116,7 +140,13 @@
 			{:else}
 				<form method="post" action="?/register" use:enhance>
 					<button type="submit" class="btn btn-primary btn-block">
-						{data.tournament.entryFeeCents > 0 ? 'Pay with GCash' : 'Register for free'}
+						{#if data.tournament.entryFeeCents > 0}
+							{data.registration?.status === 'pending'
+								? 'Continue GCash payment'
+								: 'Pay with GCash'}
+						{:else}
+							Register for free
+						{/if}
 					</button>
 				</form>
 				{#if data.tournament.entryFeeCents > 0 && !data.paymongoConfigured}
@@ -189,6 +219,53 @@
 		white-space: pre-wrap;
 		line-height: $line-height-relaxed;
 		color: color-mix(in srgb, $color-text 88%, transparent);
+	}
+
+	.empty-players {
+		margin: $space-3 0 0;
+		font-size: $font-size-sm;
+		color: $color-text-muted;
+	}
+
+	.player-list {
+		margin: $space-3 0 0;
+		padding: 0;
+		list-style: none;
+		display: flex;
+		flex-direction: column;
+		gap: $space-2;
+	}
+
+	.player-link {
+		display: flex;
+		align-items: center;
+		gap: $space-3;
+		padding: $space-2 $space-3;
+		border-radius: $radius-md;
+		text-decoration: none;
+		color: inherit;
+
+		&:hover {
+			background: color-mix(in srgb, $color-border 35%, transparent);
+		}
+	}
+
+	.player-meta {
+		display: flex;
+		flex-direction: column;
+		min-width: 0;
+	}
+
+	.player-name {
+		font-weight: $font-weight-medium;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.player-username {
+		font-size: $font-size-sm;
+		color: $color-text-muted;
 	}
 
 	.register {

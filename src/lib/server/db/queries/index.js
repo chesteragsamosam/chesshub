@@ -638,6 +638,32 @@ export async function countPaidRegistrations(tournamentId) {
 }
 
 /**
+ * Paid registrations for a tournament, newest first.
+ * @param {string} tournamentId
+ */
+export async function listPaidRegistrations(tournamentId) {
+	return db
+		.select({
+			id: tournamentRegistration.id,
+			userId: tournamentRegistration.userId,
+			paidAt: tournamentRegistration.paidAt,
+			createdAt: tournamentRegistration.createdAt,
+			name: user.name,
+			username: user.username,
+			image: user.image
+		})
+		.from(tournamentRegistration)
+		.innerJoin(user, eq(tournamentRegistration.userId, user.id))
+		.where(
+			and(
+				eq(tournamentRegistration.tournamentId, tournamentId),
+				eq(tournamentRegistration.status, 'paid')
+			)
+		)
+		.orderBy(desc(tournamentRegistration.paidAt), desc(tournamentRegistration.createdAt));
+}
+
+/**
  * @param {string} tournamentId
  * @param {string} userId
  */
@@ -656,17 +682,28 @@ export async function getRegistration(tournamentId, userId) {
 }
 
 /**
+ * Create a pending registration, or return the existing one (one per user/tournament).
  * @param {string} tournamentId
  * @param {string} userId
  */
 export async function createRegistration(tournamentId, userId) {
+	const existing = await getRegistration(tournamentId, userId);
+	if (existing) return existing;
+
 	const id = createId();
-	await db.insert(tournamentRegistration).values({
-		id,
-		tournamentId,
-		userId,
-		status: 'pending'
-	});
+	try {
+		await db.insert(tournamentRegistration).values({
+			id,
+			tournamentId,
+			userId,
+			status: 'pending'
+		});
+	} catch (err) {
+		// Unique (tournament_id, user_id) race — reuse the row that won.
+		const raced = await getRegistration(tournamentId, userId);
+		if (raced) return raced;
+		throw err;
+	}
 	return getRegistration(tournamentId, userId);
 }
 
