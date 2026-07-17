@@ -17,6 +17,7 @@
 		"db:generate": "drizzle-kit generate",
 		"db:migrate": "drizzle-kit migrate",
 		"db:studio": "drizzle-kit studio",
+		"db:migrate-paymongo": "node --env-file=.env scripts/migrate-paymongo.mjs",
 		"db:seed": "node --env-file=.env scripts/seed-players.mjs",
 		"auth:schema": "better-auth generate --config src/lib/server/auth.js --output src/lib/server/db/auth.schema.js --yes"
 	},
@@ -51,7 +52,6 @@
 		"vitest-browser-svelte": "^2.1.1"
 	},
 	"dependencies": {
-		"sharp": "^0.35.3",
-		"stripe": "^22.3.1"
+		"sharp": "^0.35.3"
 	}
 }

@@ -9,7 +9,7 @@
 		if (!cents) return 'Free';
 		return new Intl.NumberFormat(undefined, {
 			style: 'currency',
-			currency: (currency || 'usd').toUpperCase()
+			currency: (currency || 'php').toUpperCase()
 		}).format(cents / 100);
 	}
 
@@ -40,7 +40,7 @@
 
 	{#if data.checkoutResult === 'success'}
 		<p class="alert alert-success">
-			Payment received. Your registration will show as paid once Stripe confirms.
+			Payment received. Your registration will show as paid once PayMongo confirms.
 		</p>
 	{:else if data.checkoutResult === 'cancelled'}
 		<p class="alert alert-warning">Checkout cancelled.</p>
@@ -71,7 +71,12 @@
 					<div>
 						<dt>Venue</dt>
 						<dd>
-							{[data.tournament.venue, data.tournament.city, data.tournament.state, data.tournament.country]
+							{[
+								data.tournament.venue,
+								data.tournament.city,
+								data.tournament.state,
+								data.tournament.country
+							]
 								.filter(Boolean)
 								.join(', ') || 'TBA'}
 						</dd>
@@ -111,11 +116,11 @@
 			{:else}
 				<form method="post" action="?/register" use:enhance>
 					<button type="submit" class="btn btn-primary btn-block">
-						{data.tournament.entryFeeCents > 0 ? 'Pay & register' : 'Register for free'}
+						{data.tournament.entryFeeCents > 0 ? 'Pay with GCash' : 'Register for free'}
 					</button>
 				</form>
-				{#if data.tournament.entryFeeCents > 0 && !data.stripeConfigured}
-					<p class="hint">Stripe is not configured on this server yet.</p>
+				{#if data.tournament.entryFeeCents > 0 && !data.paymongoConfigured}
+					<p class="hint">PayMongo is not configured on this server yet.</p>
 				{/if}
 			{/if}
 		</aside>

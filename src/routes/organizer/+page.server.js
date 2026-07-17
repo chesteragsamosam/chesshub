@@ -1,21 +1,14 @@
 import { requireOrganizer } from '$lib/server/auth-guards';
-import {
-	getTournamentsByOrganizer,
-	getStripeConnectAccount
-} from '$lib/server/db/queries';
-import { isStripeConfigured } from '$lib/server/stripe';
+import { getTournamentsByOrganizer } from '$lib/server/db/queries';
+import { isPaymongoConfigured } from '$lib/server/paymongo';
 
 /** @type {import('./$types').PageServerLoad} */
 export async function load(event) {
 	const user = requireOrganizer(event);
-	const [tournaments, stripeAccount] = await Promise.all([
-		getTournamentsByOrganizer(user.id),
-		getStripeConnectAccount(user.id)
-	]);
+	const tournaments = await getTournamentsByOrganizer(user.id);
 
 	return {
 		tournaments,
-		stripeAccount,
-		stripeConfigured: isStripeConfigured()
+		paymongoConfigured: isPaymongoConfigured()
 	};
 }

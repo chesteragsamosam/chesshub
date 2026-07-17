@@ -8,7 +8,7 @@
 		if (!cents) return 'Free';
 		return new Intl.NumberFormat(undefined, {
 			style: 'currency',
-			currency: (currency || 'usd').toUpperCase()
+			currency: (currency || 'php').toUpperCase()
 		}).format(cents / 100);
 	}
 </script>
@@ -22,27 +22,15 @@
 		<a href={resolve('/organizer/tournaments/new')} class="btn btn-primary">New tournament</a>
 	</header>
 
-	<section class="panel stripe">
-		<div>
-			<h2 class="section-title">Stripe Connect</h2>
+	{#if !data.paymongoConfigured}
+		<section class="panel">
+			<h2 class="section-title">Payments</h2>
 			<p class="page-lede">
-				{#if !data.stripeConfigured}
-					Stripe is not configured on this server.
-				{:else if data.stripeAccount?.onboardingComplete}
-					Payouts enabled — you can publish paid tournaments.
-				{:else if data.stripeAccount}
-					Onboarding incomplete — finish setup to accept entry fees.
-				{:else}
-					Connect Stripe to receive tournament entry fees.
-				{/if}
+				PayMongo is not configured on this server. Paid tournaments cannot be published until
+				<code>PAYMONGO_SECRET_KEY</code> is set.
 			</p>
-		</div>
-		{#if data.stripeConfigured}
-			<a href={resolve('/organizer/stripe')} class="btn btn-secondary">
-				{data.stripeAccount?.onboardingComplete ? 'Manage Stripe' : 'Connect Stripe'}
-			</a>
-		{/if}
-	</section>
+		</section>
+	{/if}
 
 	{#if data.tournaments.length === 0}
 		<p class="panel-dashed">
@@ -85,14 +73,6 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: $space-4;
-	}
-
-	.stripe {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		justify-content: space-between;
-		gap: $space-3;
 	}
 
 	.tournament-list {
