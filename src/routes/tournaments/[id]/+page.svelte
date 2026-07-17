@@ -8,6 +8,17 @@
 
 	let submitting = $state(false);
 	let checkoutUrl = $state('');
+	/** Client-side countdown tick (ms). */
+	let nowMs = $state(Date.now());
+	/** When the current live payload was received (for ticking secondsToFinish). */
+	let liveLoadedAtMs = $state(Date.now());
+
+	$effect(() => {
+		// Re-baseline when server sends a fresh live snapshot.
+		void data.lichessLive;
+		liveLoadedAtMs = Date.now();
+		nowMs = Date.now();
+	});
 
 	/** @param {number} cents @param {string} currency */
 	function formatFee(cents, currency) {
@@ -30,20 +41,167 @@
 		});
 	}
 
+	/** @param {number} totalSeconds */
+	function formatCountdown(totalSeconds) {
+		const seconds = Math.max(0, Math.floor(totalSeconds));
+		const days = Math.floor(seconds / 86_400);
+		const hours = Math.floor((seconds % 86_400) / 3_600);
+		const minutes = Math.floor((seconds % 3_600) / 60);
+		const secs = seconds % 60;
+		if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+		if (hours > 0)
+			return `${hours}h ${String(minutes).padStart(2, '0')}m ${String(secs).padStart(2, '0')}s`;
+		return `${minutes}m ${String(secs).padStart(2, '0')}s`;
+	}
+
+	/** @param {number | null | undefined} clockSeconds */
+	function formatClock(clockSeconds) {
+		if (clockSeconds == null || !Number.isFinite(clockSeconds)) return '—';
+		const total = Math.max(0, Math.floor(clockSeconds));
+		const m = Math.floor(total / 60);
+		const s = total % 60;
+		return `${m}:${String(s).padStart(2, '0')}`;
+	}
+
 	const isPaid = $derived(data.tournament.entryFeeCents > 0);
+	const live = $derived(data.lichessLive);
+	const isLichessArena = $derived(
+		data.tournament.modality === 'lichess' &&
+			data.tournament.lichessTournamentFormat === 'arena' &&
+			Boolean(data.tournament.lichessTournamentId)
+	);
 
-	// While a paid registration is pending, poll so the webhook-confirmed
-	// status appears without a manual refresh.
+	const liveStatusLabel = $derived(
+		live?.status === 'finished'
+			? 'Finished'
+			: live?.status === 'started'
+				? 'Live'
+				: live
+					? 'Starting soon'
+					: null
+	);
+
+	const countdownSeconds = $derived.by(() => {
+		const elapsed = Math.max(0, (nowMs - liveLoadedAtMs) / 1000);
+		if (!live) {
+			const start = new Date(data.tournament.startDate).getTime();
+			if (!Number.isFinite(start) || start <= nowMs) return null;
+			return Math.ceil((start - nowMs) / 1000);
+		}
+		if (live.status === 'created') {
+			if (live.startsAt) {
+				const startMs = Number(live.startsAt);
+				if (Number.isFinite(startMs)) return Math.max(0, Math.ceil((startMs - nowMs) / 1000));
+			}
+			if (live.secondsToStart != null) {
+				return Math.max(0, Math.ceil(live.secondsToStart - elapsed));
+			}
+		}
+		if (live.status === 'started' && live.secondsToFinish != null) {
+			return Math.max(0, Math.ceil(live.secondsToFinish - elapsed));
+		}
+		return null;
+	});
+
+	const countdownLabel = $derived(
+		live?.status === 'started'
+			? 'Time remaining'
+			: live?.status === 'finished'
+				? null
+				: 'Starts in'
+	);
+
+	const shouldPollLive = $derived(
+		isLichessArena && live?.status !== 'finished' && data.tournament.status !== 'completed'
+	);
+
+	const shouldPollCheckout = $derived(
+		isPaid &&
+			(data.registration?.status === 'pending' ||
+				data.checkoutOutcome === 'confirming' ||
+				Boolean(checkoutUrl))
+	);
+
+	const CHECKOUT_SYNC_KEY = 'chesshub:checkout-sync';
+
+	// Tell other open tabs (the original tournament page) when this tab learns an outcome.
 	$effect(() => {
-		if (!isPaid) return;
-		if (data.registration?.status !== 'pending') return;
+		const outcome = data.checkoutOutcome;
+		if (outcome !== 'paid' && outcome !== 'failed' && outcome !== 'expired') return;
+		try {
+			localStorage.setItem(
+				CHECKOUT_SYNC_KEY,
+				JSON.stringify({
+					tournamentId: data.tournament.id,
+					outcome,
+					at: Date.now()
+				})
+			);
+		} catch {
+			// ignore quota / private mode
+		}
+	});
 
-		const timer = setInterval(() => {
+	// While checkout is pending, refresh often — and immediately when the tab is focused again.
+	$effect(() => {
+		if (!shouldPollCheckout) return;
+
+		const refresh = () => {
 			if (document.visibilityState === 'visible') {
 				invalidateAll();
 			}
-		}, 5000);
+		};
 
+		refresh();
+		const timer = setInterval(refresh, 2500);
+
+		const onVisible = () => {
+			if (document.visibilityState === 'visible') invalidateAll();
+		};
+		const onStorage = (/** @type {StorageEvent} */ event) => {
+			if (event.key !== CHECKOUT_SYNC_KEY || !event.newValue) return;
+			try {
+				const msg = JSON.parse(event.newValue);
+				if (msg?.tournamentId === data.tournament.id) invalidateAll();
+			} catch {
+				// ignore
+			}
+		};
+
+		document.addEventListener('visibilitychange', onVisible);
+		window.addEventListener('focus', onVisible);
+		window.addEventListener('storage', onStorage);
+
+		return () => {
+			clearInterval(timer);
+			document.removeEventListener('visibilitychange', onVisible);
+			window.removeEventListener('focus', onVisible);
+			window.removeEventListener('storage', onStorage);
+		};
+	});
+
+	$effect(() => {
+		if (data.viewerAward?.claim.status !== 'processing') return;
+		const timer = setInterval(() => {
+			if (document.visibilityState === 'visible') invalidateAll();
+		}, 5000);
+		return () => clearInterval(timer);
+	});
+
+	// Live Arena refresh for public viewers (standings / featured / countdown).
+	$effect(() => {
+		if (!shouldPollLive) return;
+		const timer = setInterval(() => {
+			if (document.visibilityState === 'visible') invalidateAll();
+		}, 12_000);
+		return () => clearInterval(timer);
+	});
+
+	$effect(() => {
+		if (countdownSeconds == null || countdownSeconds <= 0) return;
+		const timer = setInterval(() => {
+			nowMs = Date.now();
+		}, 1000);
 		return () => clearInterval(timer);
 	});
 
@@ -79,7 +237,15 @@
 
 <article class="page stack">
 	<header>
-		<p class="status">{data.tournament.status}</p>
+		<p class="status-row">
+			<span class="status">{data.tournament.status}</span>
+			<span class="modality-badge">
+				{data.tournament.modality === 'otb' ? 'OTB local' : 'Lichess'}
+			</span>
+			{#if liveStatusLabel}
+				<span class="live-badge" class:is-live={live?.status === 'started'}>{liveStatusLabel}</span>
+			{/if}
+		</p>
 		<h1 class="page-title">{data.tournament.title}</h1>
 		{#if data.organizer}
 			<p class="page-lede">
@@ -89,28 +255,201 @@
 		{/if}
 	</header>
 
-	{#if data.checkoutResult === 'success'}
-		{#if data.registration?.status === 'paid'}
-			<p class="alert alert-success">Payment confirmed. You are registered for this tournament.</p>
-		{:else}
-			<p class="alert alert-warning">
-				Payment is being confirmed by PayMongo. This page will update automatically once the payment
-				webhook is received.
-			</p>
-		{/if}
-	{:else if data.checkoutResult === 'cancelled'}
-		<p class="alert alert-warning">Checkout cancelled.</p>
+	{#if data.checkoutNotice}
+		<p
+			class="alert"
+			class:alert-success={data.checkoutNotice.tone === 'success'}
+			class:alert-warning={data.checkoutNotice.tone === 'warning'}
+			class:alert-error={data.checkoutNotice.tone === 'error'}
+		>
+			<strong>{data.checkoutNotice.title}.</strong>
+			{data.checkoutNotice.body}
+		</p>
 	{/if}
 
 	{#if form?.message}
-		<p class="alert alert-error">{form.message}</p>
+		<p class="alert alert-error">
+			{#if form.checkoutOutcome === 'failed'}
+				<strong>Payment failed.</strong>
+			{:else if form.checkoutOutcome === 'expired'}
+				<strong>Payment expired.</strong>
+			{:else if form.payoutOutcome === 'failed'}
+				<strong>Payout failed.</strong>
+			{/if}
+			{form.message}
+		</p>
+	{/if}
+	{#if form?.needsLichessLink}
+		<p class="alert alert-warning">
+			<a
+				href={`${resolve('/api/chess/lichess/start')}?returnTo=${encodeURIComponent(`/tournaments/${data.tournament.id}`)}`}
+				class="link"
+			>
+				Connect Lichess
+			</a>
+			so ChessHub can join the Arena for you.
+		</p>
 	{/if}
 	{#if form?.free}
 		<p class="alert alert-success">You are registered.</p>
 	{/if}
+	{#if form?.lichessJoined}
+		<p class="alert alert-success">
+			You joined the Lichess Arena. Open Lichess when the event starts to play.
+		</p>
+	{/if}
+	{#if form?.claimSubmitted}
+		<p class="alert alert-success">
+			Your GCash prize payout is {form.claimStatus === 'paid' ? 'complete' : 'being processed'}.
+		</p>
+	{/if}
 
 	<div class="layout">
 		<div class="main-col">
+			{#if isLichessArena}
+				<section class="panel live-panel">
+					<div class="live-header">
+						<h2 class="section-title">Live Arena</h2>
+						{#if live}
+							<a href={live.fullUrl} class="link" target="_blank" rel="noopener noreferrer">
+								Open on Lichess
+							</a>
+						{/if}
+					</div>
+
+					{#if data.lichessLiveError && !live}
+						<p class="hint">{data.lichessLiveError}</p>
+						{#if countdownSeconds != null && countdownLabel}
+							<p class="countdown fallback-countdown">
+								{countdownLabel}: <strong>{formatCountdown(countdownSeconds)}</strong>
+							</p>
+						{/if}
+					{:else if !live}
+						<p class="empty-players">Live Arena data is unavailable right now.</p>
+						{#if countdownSeconds != null && countdownLabel}
+							<p class="countdown fallback-countdown">
+								{countdownLabel}: <strong>{formatCountdown(countdownSeconds)}</strong>
+							</p>
+						{/if}
+					{:else}
+						<div class="live-meta">
+							<span>{live.nbPlayers} on Lichess</span>
+							{#if countdownLabel && countdownSeconds != null}
+								<span class="countdown">
+									{countdownLabel}: <strong>{formatCountdown(countdownSeconds)}</strong>
+								</span>
+							{:else if live.status === 'finished'}
+								<span>Arena finished</span>
+							{/if}
+						</div>
+
+						{#if live.featured}
+							<div class="featured">
+								<h3 class="live-subtitle">Featured game</h3>
+								<p class="featured-players">
+									<span>
+										{#if live.featured.white.rank}#{live.featured.white.rank}{/if}
+										{live.featured.white.name}
+										{#if live.featured.white.rating}
+											<span class="muted-inline">({live.featured.white.rating})</span>
+										{/if}
+										{#if live.featured.clocks}
+											<span class="clock">{formatClock(live.featured.clocks.white)}</span>
+										{/if}
+									</span>
+									<span class="vs">vs</span>
+									<span>
+										{#if live.featured.black.rank}#{live.featured.black.rank}{/if}
+										{live.featured.black.name}
+										{#if live.featured.black.rating}
+											<span class="muted-inline">({live.featured.black.rating})</span>
+										{/if}
+										{#if live.featured.clocks}
+											<span class="clock">{formatClock(live.featured.clocks.black)}</span>
+										{/if}
+									</span>
+								</p>
+								<a
+									href={`https://lichess.org/${live.featured.id}`}
+									class="link"
+									target="_blank"
+									rel="noopener noreferrer"
+								>
+									Watch on Lichess
+								</a>
+							</div>
+						{/if}
+
+						{#if live.duels.length > 0 && live.status === 'started'}
+							<div class="duels">
+								<h3 class="live-subtitle">Playing now</h3>
+								<ul class="duel-list">
+									{#each live.duels.slice(0, 8) as duel (duel.id)}
+										<li>
+											<a
+												href={`https://lichess.org/${duel.id}`}
+												class="duel-link"
+												target="_blank"
+												rel="noopener noreferrer"
+											>
+												<span
+													>{duel.white}{#if duel.whiteRating}
+														({duel.whiteRating}){/if}</span
+												>
+												<span class="vs">vs</span>
+												<span
+													>{duel.black}{#if duel.blackRating}
+														({duel.blackRating}){/if}</span
+												>
+											</a>
+										</li>
+									{/each}
+								</ul>
+							</div>
+						{/if}
+
+						{#if live.standing.length > 0}
+							<div class="standings">
+								<h3 class="live-subtitle">
+									{live.status === 'finished' ? 'Final standings' : 'Standings'}
+								</h3>
+								<table class="standing-table">
+									<thead>
+										<tr>
+											<th>Rank</th>
+											<th>Player</th>
+											<th>Rating</th>
+											<th>Score</th>
+										</tr>
+									</thead>
+									<tbody>
+										{#each live.standing as player (player.rank + player.name)}
+											<tr>
+												<td>{player.rank}</td>
+												<td>
+													{#if player.title}<span class="title-tag">{player.title}</span>{/if}
+													{player.name}
+												</td>
+												<td>{player.rating ?? '—'}</td>
+												<td>{player.score}</td>
+											</tr>
+										{/each}
+									</tbody>
+								</table>
+							</div>
+						{:else if live.status === 'created'}
+							<p class="empty-players">
+								Players will appear here once they join the Arena on Lichess.
+							</p>
+						{/if}
+
+						{#if shouldPollLive}
+							<p class="live-refresh">Updates every few seconds while this page is open.</p>
+						{/if}
+					{/if}
+				</section>
+			{/if}
+
 			<section class="panel">
 				<h2 class="section-title">Details</h2>
 				<dl class="details">
@@ -125,16 +464,20 @@
 						</div>
 					{/if}
 					<div>
-						<dt>Venue</dt>
+						<dt>Location</dt>
 						<dd>
-							{[
-								data.tournament.venue,
-								data.tournament.city,
-								data.tournament.state,
-								data.tournament.country
-							]
-								.filter(Boolean)
-								.join(', ') || 'TBA'}
+							{#if data.tournament.modality === 'lichess'}
+								Online · Lichess
+							{:else}
+								{[
+									data.tournament.venue,
+									data.tournament.city,
+									data.tournament.state,
+									data.tournament.country
+								]
+									.filter(Boolean)
+									.join(', ') || 'TBA'}
+							{/if}
 						</dd>
 					</div>
 					<div>
@@ -155,6 +498,93 @@
 				<section class="panel">
 					<h2 class="section-title">About</h2>
 					<p class="about">{data.tournament.description}</p>
+				</section>
+			{/if}
+
+			{#if data.prizes.length > 0}
+				<section class="panel prize-section">
+					<h2 class="section-title">
+						{data.awards.length > 0 ? 'Prize winners' : 'Prizes'}
+					</h2>
+					<ul class="prize-list">
+						{#if data.awards.length > 0}
+							{#each data.awards as award (award.id)}
+								<li>
+									<div>
+										<strong>#{award.placement} · {award.prizeLabel}</strong>
+										<p>
+											<a href={resolve(`/profile/${award.username || award.userId}`)} class="link">
+												{award.name}
+											</a>
+											· Lichess: {award.lichessUsername}
+										</p>
+									</div>
+									<strong>{formatFee(award.amountCents, 'php')}</strong>
+								</li>
+							{/each}
+						{:else}
+							{#each data.prizes as prize (prize.id)}
+								<li>
+									<strong>#{prize.placement} · {prize.label}</strong>
+									<strong>{formatFee(prize.amountCents, 'php')}</strong>
+								</li>
+							{/each}
+						{/if}
+					</ul>
+
+					{#if data.viewerAward}
+						<div class="claim-card">
+							<h3>Your prize: {formatFee(data.viewerAward.award.amountCents, 'php')}</h3>
+							{#if data.viewerAward.claim.status === 'paid'}
+								<p class="alert alert-success">
+									Paid to {data.viewerAward.claim.destinationMasked}.
+								</p>
+							{:else if data.viewerAward.claim.status === 'processing'}
+								<p class="alert alert-warning">
+									Your GCash payout is processing. This page will update automatically.
+								</p>
+							{:else}
+								{#if data.viewerAward.claim.status === 'failed'}
+									<p class="alert alert-error">
+										<strong>Payout failed.</strong>
+										{data.viewerAward.claim.failureReason ??
+											'Check your GCash details and try again.'}
+									</p>
+								{/if}
+								{#if data.disbursementsConfigured}
+									<form method="post" action="?/claimPrize" use:enhance class="claim-form">
+										<label class="field">
+											Name on GCash account
+											<input
+												name="recipientName"
+												required
+												maxlength="255"
+												autocomplete="name"
+												value={data.viewerAward.claim.recipientName ?? data.user?.name ?? ''}
+											/>
+										</label>
+										<label class="field">
+											GCash mobile number
+											<input
+												name="gcashMobile"
+												required
+												inputmode="tel"
+												autocomplete="tel"
+												placeholder="09XXXXXXXXX"
+												pattern="(?:\+?63|0)9\d{9}"
+											/>
+										</label>
+										<p class="hint">
+											Confirm the account name and number carefully. Payouts are sent automatically.
+										</p>
+										<button type="submit" class="btn btn-primary">Claim via GCash</button>
+									</form>
+								{:else}
+									<p class="alert alert-warning">GCash prize payouts are not configured yet.</p>
+								{/if}
+							{/if}
+						</div>
+					{/if}
 				</section>
 			{/if}
 
@@ -186,22 +616,68 @@
 			<h2 class="section-title">Registration</h2>
 			<p class="fee">{formatFee(data.tournament.entryFeeCents, data.tournament.currency)}</p>
 
-			{#if data.registration?.status === 'paid'}
+			{#if data.tournament.status === 'draft'}
+				<p class="full">
+					This tournament is still a draft. Publish it from the organizer edit page before players can
+					register.
+				</p>
+			{:else if data.tournament.status === 'cancelled'}
+				<p class="full">This tournament has been cancelled.</p>
+			{:else if data.tournament.status === 'completed'}
+				<p class="full">Registration is closed.</p>
+			{:else if data.registration?.status === 'paid'}
 				<p class="alert alert-success">You are registered for this tournament.</p>
+				{#if data.lichessJoin?.available}
+					{#if data.lichessJoin.joinedAt}
+						<p class="hint">
+							Joined on Lichess as {data.lichessJoin.lichessUsername ?? 'your account'}.
+						</p>
+						<form method="post" action="?/joinLichess" use:enhance class="join-lichess">
+							<button type="submit" class="btn btn-ink btn-block">Re-join Lichess Arena</button>
+						</form>
+					{:else if data.lichessJoin.hasLinkedLichess}
+						<form method="post" action="?/joinLichess" use:enhance class="join-lichess">
+							<button type="submit" class="btn btn-primary btn-block">Join Lichess Arena</button>
+						</form>
+						<p class="hint">
+							ChessHub joins the private Arena for you — password and allow list are handled on the server.
+						</p>
+					{:else}
+						<a
+							href={`${resolve('/api/chess/lichess/start')}?returnTo=${encodeURIComponent(`/tournaments/${data.tournament.id}`)}`}
+							class="btn btn-primary btn-block"
+						>
+							Connect Lichess to join
+						</a>
+						<p class="hint">Link your Lichess account, then join the Arena from ChessHub.</p>
+					{/if}
+				{/if}
 			{:else if data.spotsLeft === 0}
 				<p class="full">This tournament is full.</p>
 			{:else if !data.user}
 				<a href={resolve('/login')} class="btn btn-primary btn-block">Sign in to register</a>
 			{:else}
+				{#if data.checkoutNotice && (data.checkoutNotice.tone === 'error' || data.checkoutNotice.tone === 'warning') && data.registration?.status === 'pending'}
+					<p
+						class="alert"
+						class:alert-warning={data.checkoutNotice.tone === 'warning'}
+						class:alert-error={data.checkoutNotice.tone === 'error'}
+					>
+						<strong>{data.checkoutNotice.title}.</strong>
+						{data.checkoutNotice.body}
+					</p>
+				{/if}
 				<form method="post" action="?/register" use:enhance={submitRegister}>
 					<button type="submit" class="btn btn-primary btn-block" disabled={submitting}>
 						{#if isPaid}
 							{#if submitting}
 								Starting checkout…
+							{:else if data.checkoutOutcome === 'failed' || data.checkoutOutcome === 'expired'}
+								Try payment again
 							{:else if data.registration?.status === 'pending'}
-								Continue GCash payment
+								Continue payment
 							{:else}
-								Pay with GCash
+								Pay with GCash or QR Ph
 							{/if}
 						{:else}
 							Register for free
@@ -210,17 +686,21 @@
 				</form>
 				{#if isPaid && (checkoutUrl || data.registration?.status === 'pending')}
 					<p class="hint">
-						Complete your payment in the new tab.
-						{#if checkoutUrl}
-							Didn’t see it?
-							<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
-							<a href={checkoutUrl} target="_blank" rel="noopener" class="link">Open checkout</a>.
+						{#if data.checkoutOutcome === 'failed' || data.checkoutOutcome === 'expired'}
+							Start a new GCash or QR Ph payment when you are ready.
+						{:else}
+							Complete your payment in the new tab.
+							{#if checkoutUrl}
+								Didn’t see it?
+								<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+								<a href={checkoutUrl} target="_blank" rel="noopener" class="link">Open checkout</a>.
+							{/if}
+							This page updates automatically once your payment is confirmed.
 						{/if}
-						This page updates automatically once PayMongo confirms your payment.
 					</p>
 				{/if}
 				{#if isPaid && !data.paymongoConfigured}
-					<p class="hint">PayMongo is not configured on this server yet.</p>
+					<p class="hint">Online payments are not set up on this server yet.</p>
 				{/if}
 			{/if}
 		</aside>
@@ -236,6 +716,14 @@
 		gap: $space-6;
 	}
 
+	.status-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: $space-2;
+		margin: 0 0 $space-2;
+	}
+
 	.status {
 		margin: 0;
 		font-size: $font-size-xs;
@@ -243,6 +731,26 @@
 		letter-spacing: $letter-spacing-wide;
 		text-transform: uppercase;
 		color: $color-text-muted;
+	}
+
+	.modality-badge {
+		font-size: $font-size-xs;
+		font-weight: $font-weight-semibold;
+		letter-spacing: $letter-spacing-wide;
+		text-transform: uppercase;
+		color: $color-primary;
+	}
+
+	.live-badge {
+		font-size: $font-size-xs;
+		font-weight: $font-weight-semibold;
+		letter-spacing: $letter-spacing-wide;
+		text-transform: uppercase;
+		color: $color-text-muted;
+
+		&.is-live {
+			color: $color-danger;
+		}
 	}
 
 	.layout {
@@ -259,6 +767,133 @@
 		display: flex;
 		flex-direction: column;
 		gap: $space-4;
+	}
+
+	.live-header {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: $space-2;
+	}
+
+	.live-meta {
+		display: flex;
+		flex-wrap: wrap;
+		gap: $space-3 $space-5;
+		margin-top: $space-3;
+		font-size: $font-size-sm;
+		color: $color-text-muted;
+	}
+
+	.countdown strong {
+		color: $color-text;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.fallback-countdown {
+		margin: $space-3 0 0;
+		font-size: $font-size-sm;
+		color: $color-text-muted;
+	}
+
+	.live-subtitle {
+		margin: $space-4 0 $space-2;
+		font-size: $font-size-sm;
+		font-weight: $font-weight-semibold;
+		letter-spacing: $letter-spacing-wide;
+		text-transform: uppercase;
+		color: $color-text-muted;
+	}
+
+	.featured-players {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: $space-2;
+		margin: 0 0 $space-2;
+		font-size: $font-size-sm;
+	}
+
+	.muted-inline {
+		color: $color-text-muted;
+	}
+
+	.clock {
+		margin-left: $space-1;
+		font-variant-numeric: tabular-nums;
+		color: $color-text-muted;
+	}
+
+	.vs {
+		color: $color-text-muted;
+		font-size: $font-size-xs;
+		text-transform: uppercase;
+	}
+
+	.duel-list {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+		display: flex;
+		flex-direction: column;
+		gap: $space-1;
+	}
+
+	.duel-link {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: $space-2;
+		padding: $space-2 0;
+		font-size: $font-size-sm;
+		text-decoration: none;
+		color: inherit;
+		border-bottom: 1px solid color-mix(in srgb, $color-border 70%, transparent);
+
+		&:hover {
+			color: $color-primary;
+		}
+	}
+
+	.standing-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: $font-size-sm;
+
+		th,
+		td {
+			padding: $space-2 $space-2;
+			text-align: left;
+			border-bottom: 1px solid $color-border;
+		}
+
+		th {
+			font-size: $font-size-xs;
+			font-weight: $font-weight-semibold;
+			letter-spacing: $letter-spacing-wide;
+			text-transform: uppercase;
+			color: $color-text-muted;
+		}
+
+		td:first-child,
+		th:first-child,
+		td:last-child,
+		th:last-child {
+			font-variant-numeric: tabular-nums;
+		}
+	}
+
+	.title-tag {
+		margin-right: $space-1;
+		font-weight: $font-weight-semibold;
+		color: $color-primary;
+	}
+
+	.live-refresh {
+		margin: $space-3 0 0;
+		font-size: $font-size-xs;
+		color: $color-text-muted;
 	}
 
 	.details {
@@ -289,6 +924,49 @@
 		white-space: pre-wrap;
 		line-height: $line-height-relaxed;
 		color: color-mix(in srgb, $color-text 88%, transparent);
+	}
+
+	.prize-section,
+	.claim-card,
+	.claim-form {
+		display: flex;
+		flex-direction: column;
+		gap: $space-4;
+	}
+
+	.prize-list {
+		display: flex;
+		flex-direction: column;
+		gap: $space-2;
+		margin: $space-3 0 0;
+		padding: 0;
+		list-style: none;
+
+		li {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: $space-4;
+			padding: $space-3;
+			border: 1px solid $color-border;
+			border-radius: $radius-md;
+		}
+
+		p {
+			margin: $space-1 0 0;
+			color: $color-text-muted;
+			font-size: $font-size-sm;
+		}
+	}
+
+	.claim-card {
+		margin-top: $space-2;
+		padding-top: $space-4;
+		border-top: 1px solid $color-border;
+
+		h3 {
+			margin: 0;
+		}
 	}
 
 	.empty-players {
@@ -362,5 +1040,11 @@
 		margin: 0;
 		font-size: $font-size-xs;
 		color: $color-warning;
+	}
+
+	.join-lichess {
+		display: flex;
+		flex-direction: column;
+		gap: $space-2;
 	}
 </style>

@@ -22,15 +22,36 @@
 			day: 'numeric'
 		});
 	}
+
+	/** @param {'lichess' | 'otb' | string | null | undefined} modality */
+	function modalityLabel(modality) {
+		return modality === 'otb' ? 'OTB local' : 'Lichess';
+	}
+
+	/** @param {{ modality?: string, venue?: string | null, city?: string | null, state?: string | null, country?: string | null }} tournament */
+	function locationLine(tournament) {
+		if (tournament.modality === 'lichess') return 'Online · Lichess';
+		return [tournament.venue, tournament.city, tournament.state, tournament.country]
+			.filter(Boolean)
+			.join(' · ');
+	}
 </script>
 
 <div class="page stack">
 	<header>
 		<h1 class="page-title">Find tournaments</h1>
-		<p class="page-lede">Search published local chess events by location and date.</p>
+		<p class="page-lede">Search published Lichess and local OTB events by type, location, and date.</p>
 	</header>
 
 	<form method="get" class="panel filters">
+		<label class="field">
+			Type
+			<select name="modality">
+				<option value="" selected={data.filters.modality === ''}>All</option>
+				<option value="lichess" selected={data.filters.modality === 'lichess'}>Lichess</option>
+				<option value="otb" selected={data.filters.modality === 'otb'}>OTB local</option>
+			</select>
+		</label>
 		<label class="field">
 			City
 			<input type="text" name="city" value={data.filters.city} />
@@ -41,7 +62,7 @@
 				type="text"
 				name="country"
 				maxlength="2"
-				placeholder="US"
+				placeholder="PH"
 				value={data.filters.country}
 				class="uppercase"
 			/>
@@ -71,12 +92,9 @@
 					<a href={resolve(`/tournaments/${tournament.id}`)} class="list-link">
 						<div class="result-row">
 							<div>
-								<h2 class="result-title">{tournament.title}</h2>
-								<p class="result-meta">
-									{[tournament.venue, tournament.city, tournament.state, tournament.country]
-										.filter(Boolean)
-										.join(' · ')}
-								</p>
+								<p class="result-type">{tournament.title}</p>
+								<h2 class="result-title">{modalityLabel(tournament.modality)}</h2>
+								<p class="result-meta">{locationLine(tournament)}</p>
 								<p class="result-meta">{formatDate(tournament.startDate)}</p>
 							</div>
 							<div class="result-side">
@@ -111,7 +129,7 @@
 		}
 
 		@media (min-width: $breakpoint-lg) {
-			grid-template-columns: repeat(5, minmax(0, 1fr));
+			grid-template-columns: repeat(3, minmax(0, 1fr));
 			align-items: end;
 		}
 	}
@@ -142,6 +160,15 @@
 		align-items: flex-start;
 		justify-content: space-between;
 		gap: $space-3;
+	}
+
+	.result-type {
+		margin: 0 0 $space-1;
+		font-size: $font-size-xs;
+		font-weight: $font-weight-semibold;
+		letter-spacing: $letter-spacing-wide;
+		text-transform: uppercase;
+		color: $color-primary;
 	}
 
 	.result-title {

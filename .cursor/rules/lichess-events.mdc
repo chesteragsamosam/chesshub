@@ -1,0 +1,24 @@
+---
+description: Lichess event fair-play, advertising, and prize policy
+globs: "**/organizer/**/*,**/tournaments/**/*,**/prizes/**/*,**/lichess*"
+alwaysApply: false
+---
+
+# Lichess event & prize policy
+
+Follow the **lichess-events** skill (`LichessEventTips.txt`) whenever changing organizer guides, prize UX, payout timing, or eligibility copy.
+
+## Enforce in product guidance
+
+- Recommend **rated** games and a **minimum games** entry requirement for fair ratings.
+- **Advertise on Lichess only** in the organizer’s team / team-tournament chats — not forums, other event chats, or DMs.
+- **Hold payouts 72 hours** after the event for fair-play actions.
+- Require winners’ Lichess accounts to remain **open**; do not pay closed/unreopenable accounts.
+- **Cash prizes only** in automated flows (ChessHub: PHP). No e-books, PDFs, software, or place-restricted vouchers/credit unless explicitly described (and preferably outside automation).
+- Forbidden: min-player gates to issue prizes; followers / team membership / leadership as prizes.
+- Category prizes (rating bands, women’s, etc.) are hard to enforce online — disclose that.
+- Lichess is not responsible for unofficial event payouts; keep ChessHub disclaimers accurate.
+
+## Reporting fair play
+
+Allow reporting suspected engine use; never encourage mass-reporting winners solely because they won prizes.

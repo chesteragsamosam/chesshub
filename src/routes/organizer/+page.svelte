@@ -1,5 +1,6 @@
 <script>
 	import { resolve } from '$app/paths';
+	import { page } from '$app/stores';
 
 	let { data } = $props();
 
@@ -11,6 +12,11 @@
 			currency: (currency || 'php').toUpperCase()
 		}).format(cents / 100);
 	}
+
+	/** @param {'lichess' | 'otb' | string | null | undefined} modality */
+	function modalityLabel(modality) {
+		return modality === 'otb' ? 'OTB local' : 'Lichess';
+	}
 </script>
 
 <div class="page stack">
@@ -19,7 +25,10 @@
 			<h1 class="page-title">Organizer dashboard</h1>
 			<p class="page-lede">Create and manage your tournaments.</p>
 		</div>
-		<a href={resolve('/organizer/tournaments/new')} class="btn btn-primary">New tournament</a>
+		<div class="header-actions">
+			<a href={resolve('/organizer/guide')} class="btn btn-secondary">Organizer guide</a>
+			<a href={resolve('/organizer/tournaments/new')} class="btn btn-primary">New tournament</a>
+		</div>
 	</header>
 
 	{#if !data.paymongoConfigured}
@@ -32,10 +41,39 @@
 		</section>
 	{/if}
 
+	<form method="get" class="panel filters">
+		<label class="field">
+			Type
+			<select name="modality">
+				<option value="" selected={data.filters.modality === ''}>All</option>
+				<option value="lichess" selected={data.filters.modality === 'lichess'}>Lichess</option>
+				<option value="otb" selected={data.filters.modality === 'otb'}>OTB local</option>
+			</select>
+		</label>
+		<label class="field">
+			From
+			<input type="date" name="from" value={data.filters.from} />
+		</label>
+		<label class="field">
+			To
+			<input type="date" name="to" value={data.filters.to} />
+		</label>
+		<div class="filter-actions">
+			<button type="submit" class="btn btn-primary">Filter</button>
+			{#if $page.url.search}
+				<a href={resolve('/organizer')} class="btn btn-secondary">Clear</a>
+			{/if}
+		</div>
+	</form>
+
 	{#if data.tournaments.length === 0}
 		<p class="panel-dashed">
-			No tournaments yet.
-			<a href={resolve('/organizer/tournaments/new')} class="link">Create one</a>
+			{#if $page.url.search}
+				No tournaments match your filters.
+			{:else}
+				No tournaments yet.
+				<a href={resolve('/organizer/tournaments/new')} class="link">Create one</a>
+			{/if}
 		</p>
 	{:else}
 		<ul class="tournament-list">
@@ -46,7 +84,8 @@
 							{tournament.title}
 						</a>
 						<p class="meta">
-							<span class="capitalize">{tournament.status}</span>
+							<span class="modality">{modalityLabel(tournament.modality)}</span>
+							· <span class="capitalize">{tournament.status}</span>
 							· {formatFee(tournament.entryFeeCents, tournament.currency)}
 							· {new Date(tournament.startDate).toLocaleDateString()}
 						</p>
@@ -73,6 +112,33 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: $space-4;
+	}
+
+	.header-actions {
+		display: flex;
+		flex-wrap: wrap;
+		gap: $space-3;
+	}
+
+	.filters {
+		display: grid;
+		gap: $space-3;
+
+		@media (min-width: $breakpoint-sm) {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+			align-items: end;
+		}
+
+		@media (min-width: $breakpoint-lg) {
+			grid-template-columns: repeat(4, minmax(0, 1fr));
+		}
+	}
+
+	.filter-actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: end;
+		gap: $space-2;
 	}
 
 	.tournament-list {
@@ -112,6 +178,11 @@
 		margin: $space-1 0 0;
 		font-size: $font-size-sm;
 		color: $color-text-muted;
+	}
+
+	.modality {
+		font-weight: $font-weight-medium;
+		color: $color-primary;
 	}
 
 	.capitalize {

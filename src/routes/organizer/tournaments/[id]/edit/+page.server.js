@@ -1,6 +1,6 @@
 import { error, fail } from '@sveltejs/kit';
 import { requireOrganizer } from '$lib/server/auth-guards';
-import { getTournamentById, updateTournament } from '$lib/server/db/queries';
+import { getTournamentById, updateTournament, toPublicTournament } from '$lib/server/db/queries';
 import { isPaymongoConfigured } from '$lib/server/paymongo';
 
 /** @param {Date | string | null | undefined} d */
@@ -21,13 +21,16 @@ export async function load(event) {
 		error(403, 'Not your tournament');
 	}
 
+	const publicTournament = toPublicTournament(tournament) ?? tournament;
+
 	return {
 		tournament: {
-			...tournament,
+			...publicTournament,
 			startDateLocal: toLocalInput(tournament.startDate),
 			endDateLocal: toLocalInput(tournament.endDate)
 		},
-		paymongoConfigured: isPaymongoConfigured()
+		paymongoConfigured: isPaymongoConfigured(),
+		justCreated: event.url.searchParams.get('created') === '1'
 	};
 }
 
@@ -54,9 +57,24 @@ export const actions = {
 		const currency = (formData.get('currency')?.toString() || 'php').toLowerCase();
 		const maxPlayersRaw = formData.get('maxPlayers')?.toString() ?? '';
 		const status = formData.get('status')?.toString() ?? 'draft';
+		const modalityRaw = formData.get('modality')?.toString() ?? tournament.modality;
 
 		if (!title || !startDateRaw) {
 			return fail(400, { message: 'Title and start date are required' });
+		}
+
+		if (modalityRaw !== 'lichess' && modalityRaw !== 'otb') {
+			return fail(400, { message: 'Invalid event type' });
+		}
+
+		/** @type {'lichess' | 'otb'} */
+		let modality = modalityRaw;
+		if (tournament.status !== 'draft') {
+			modality = tournament.modality;
+		}
+
+		if (modality === 'otb' && !venue && !city) {
+			return fail(400, { message: 'OTB events need at least a venue or city' });
 		}
 
 		const startDate = new Date(startDateRaw);
@@ -79,7 +97,7 @@ export const actions = {
 		}
 
 		if (currency !== 'php') {
-			return fail(400, { message: 'Currency must be PHP for GCash payments' });
+			return fail(400, { message: 'Currency must be PHP for GCash or QR Ph payments' });
 		}
 
 		if (!['draft', 'published', 'cancelled', 'completed'].includes(status)) {
@@ -98,10 +116,11 @@ export const actions = {
 		await updateTournament(tournament.id, {
 			title,
 			description: description || null,
-			venue: venue || null,
-			city: city || null,
-			state: state || null,
-			country: country || null,
+			modality,
+			venue: modality === 'otb' ? venue || null : null,
+			city: modality === 'otb' ? city || null : null,
+			state: modality === 'otb' ? state || null : null,
+			country: modality === 'otb' ? country || null : null,
 			startDate,
 			endDate,
 			entryFeeCents,

@@ -1,0 +1,16 @@
+Events Tips
+Are you organising an event on Lichess? Here are some tips for a smooth and fair event:
+
+Set a minimum game requirement for entry - this means players have to establish their account at their true rating.
+Make the games rated. Casual games are not automatically analysed for engine use. Enforcing rated games helps us to enforce fair play.
+Advertising your event
+You can advertise your event on Lichess only in your team, or chats for your team tournaments. Posts in the forums, posting in other event chats, or direct messaging other users to advertise on Lichess is not allowed.
+You can of course also advertise (as appropriate) on any non-Lichess locations too!
+Events with prizes
+Wait until 72 hours after the event before paying out to allow time for any fair play actions to be taken. You may wish to report any players suspected of breaching fair play rules, please do so but do not report unsuspected players purely for winning prizes as this wastes moderator time.
+Require players to keep their accounts open to prove no fair play breach occurred - if someone cannot re-open their account, you should not pay out the prize. If the account owner wishes to, they may email events@lichess.org with an event organiser in copy and we will explain the reason for the account closure (whether closed by the user, or for fair play violations).
+If you have category prizes such as under XXXX rating, women's prizes, or other categories, please note that these are very difficult to enforce in online play.
+Please note, Lichess is not responsible for prize payouts on unofficial events held on Lichess.
+Only cash prizes are permitted on Lichess - e-books, PDFs and software as prizes are not permitted due to piracy concerns. Prizes that are restricted to vouchers or credit in a specific place are also not allowed unless this is explicitly stated in the tournament description.
+Tournaments requiring a minimum number of players to issue prizes are forbidden.
+Followers, team members or team leaderships as prizes are forbidden.

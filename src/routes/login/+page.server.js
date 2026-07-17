@@ -32,6 +32,7 @@ export const actions = {
 			if (error instanceof APIError) {
 				return fail(400, { message: error.message || 'Sign in failed', email });
 			}
+			console.error('[login] sign-in failed', error);
 			return fail(500, { message: 'Unexpected error', email });
 		}
 

@@ -89,6 +89,7 @@ export const tournament = mysqlTable(
 		organizerId: varchar('organizer_id', { length: 36 }).notNull(),
 		title: varchar('title', { length: 255 }).notNull(),
 		description: text('description'),
+		modality: mysqlEnum('modality', ['lichess', 'otb']).default('lichess').notNull(),
 		venue: varchar('venue', { length: 255 }),
 		city: varchar('city', { length: 255 }),
 		state: varchar('state', { length: 255 }),
@@ -100,6 +101,16 @@ export const tournament = mysqlTable(
 		entryFeeCents: int('entry_fee_cents').default(0).notNull(),
 		currency: varchar('currency', { length: 3 }).default('php').notNull(),
 		maxPlayers: int('max_players'),
+		lichessTournamentId: varchar('lichess_tournament_id', { length: 64 }),
+		lichessTournamentFormat: mysqlEnum('lichess_tournament_format', ['arena', 'swiss']),
+		/** Server-only Arena password; never expose to clients. */
+		lichessArenaPassword: text('lichess_arena_password'),
+		/**
+		 * JSON snapshot of Arena create fields so updates can re-send conditions
+		 * (Lichess clears omitted conditions on POST /api/tournament/{id}).
+		 */
+		lichessArenaSettings: text('lichess_arena_settings'),
+		resultsFinalizedAt: timestamp('results_finalized_at', { fsp: 3 }),
 		status: mysqlEnum('status', ['draft', 'published', 'cancelled', 'completed'])
 			.default('draft')
 			.notNull(),
@@ -112,7 +123,80 @@ export const tournament = mysqlTable(
 	(table) => [
 		index('tournament_organizer_idx').on(table.organizerId),
 		index('tournament_status_idx').on(table.status),
+		index('tournament_modality_idx').on(table.modality),
 		index('tournament_location_idx').on(table.city, table.country)
+	]
+);
+
+export const tournamentPrize = mysqlTable(
+	'tournament_prize',
+	{
+		id: varchar('id', { length: 36 }).primaryKey(),
+		tournamentId: varchar('tournament_id', { length: 36 }).notNull(),
+		placement: int('placement').notNull(),
+		label: varchar('label', { length: 255 }).notNull(),
+		amountCents: int('amount_cents').notNull(),
+		createdAt: timestamp('created_at', { fsp: 3 }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { fsp: 3 })
+			.defaultNow()
+			.$onUpdate(() => new Date())
+			.notNull()
+	},
+	(table) => [
+		uniqueIndex('tournament_prize_placement_idx').on(table.tournamentId, table.placement),
+		index('tournament_prize_tournament_idx').on(table.tournamentId)
+	]
+);
+
+export const tournamentAward = mysqlTable(
+	'tournament_award',
+	{
+		id: varchar('id', { length: 36 }).primaryKey(),
+		tournamentId: varchar('tournament_id', { length: 36 }).notNull(),
+		prizeId: varchar('prize_id', { length: 36 }).notNull(),
+		userId: varchar('user_id', { length: 36 }).notNull(),
+		placement: int('placement').notNull(),
+		lichessUsername: varchar('lichess_username', { length: 255 }).notNull(),
+		prizeLabel: varchar('prize_label', { length: 255 }).notNull(),
+		amountCents: int('amount_cents').notNull(),
+		createdAt: timestamp('created_at', { fsp: 3 }).defaultNow().notNull()
+	},
+	(table) => [
+		uniqueIndex('tournament_award_prize_idx').on(table.prizeId),
+		uniqueIndex('tournament_award_placement_idx').on(table.tournamentId, table.placement),
+		index('tournament_award_user_idx').on(table.userId)
+	]
+);
+
+export const prizeClaim = mysqlTable(
+	'prize_claim',
+	{
+		id: varchar('id', { length: 36 }).primaryKey(),
+		awardId: varchar('award_id', { length: 36 }).notNull(),
+		status: mysqlEnum('status', ['unclaimed', 'processing', 'paid', 'failed'])
+			.default('unclaimed')
+			.notNull(),
+		paymongoWalletTransactionId: varchar('paymongo_wallet_transaction_id', { length: 255 }),
+		paymongoTransferId: varchar('paymongo_transfer_id', { length: 255 }),
+		paymongoReferenceNumber: varchar('paymongo_reference_number', { length: 255 }),
+		destinationMasked: varchar('destination_masked', { length: 32 }),
+		recipientName: varchar('recipient_name', { length: 255 }),
+		failureCode: varchar('failure_code', { length: 100 }),
+		failureReason: text('failure_reason'),
+		attemptCount: int('attempt_count').default(0).notNull(),
+		claimedAt: timestamp('claimed_at', { fsp: 3 }),
+		paidAt: timestamp('paid_at', { fsp: 3 }),
+		createdAt: timestamp('created_at', { fsp: 3 }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { fsp: 3 })
+			.defaultNow()
+			.$onUpdate(() => new Date())
+			.notNull()
+	},
+	(table) => [
+		uniqueIndex('prize_claim_award_idx').on(table.awardId),
+		uniqueIndex('prize_claim_wallet_transaction_idx').on(table.paymongoWalletTransactionId),
+		uniqueIndex('prize_claim_transfer_idx').on(table.paymongoTransferId),
+		index('prize_claim_status_idx').on(table.status)
 	]
 );
 
@@ -128,6 +212,7 @@ export const tournamentRegistration = mysqlTable(
 		paymongoCheckoutSessionId: varchar('paymongo_checkout_session_id', { length: 255 }),
 		paymongoPaymentId: varchar('paymongo_payment_id', { length: 255 }),
 		paidAt: timestamp('paid_at', { fsp: 3 }),
+		lichessJoinedAt: timestamp('lichess_joined_at', { fsp: 3 }),
 		createdAt: timestamp('created_at', { fsp: 3 }).defaultNow().notNull()
 	},
 	(table) => [

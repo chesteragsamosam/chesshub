@@ -1,6 +1,26 @@
 import { env } from '$env/dynamic/private';
 import { primaryRating } from '$lib/chess-ratings';
 
+/** Scopes needed to link an account and create Arena tournaments. */
+export const LICHESS_OAUTH_SCOPES = 'email:read preference:read tournament:write';
+
+/**
+ * Allow only same-origin relative paths (no protocol-relative or absolute URLs).
+ * @param {string | null | undefined} value
+ * @param {string} [fallback]
+ */
+export function safeLichessReturnTo(value, fallback = '/settings/profile') {
+	if (!value) return fallback;
+	const trimmed = value.trim();
+	if (!trimmed.startsWith('/') || trimmed.startsWith('//') || trimmed.includes('\\')) {
+		return fallback;
+	}
+	if (trimmed.includes('://') || trimmed.includes('\n') || trimmed.includes('\r')) {
+		return fallback;
+	}
+	return trimmed;
+}
+
 /**
  * @param {string} state
  * @param {string} codeChallenge
@@ -16,7 +36,7 @@ export function getLichessAuthUrl(state, codeChallenge) {
 		response_type: 'code',
 		client_id: clientId,
 		redirect_uri: redirectUri,
-		scope: 'email:read preference:read',
+		scope: LICHESS_OAUTH_SCOPES,
 		state,
 		code_challenge_method: 'S256',
 		code_challenge: codeChallenge

@@ -1,6 +1,6 @@
 # ChessHub
 
-Link chess profiles (Lichess, Chess.com, FIDE), discover local tournaments, and pay entry fees with GCash via PayMongo.
+Link chess profiles (Lichess, Chess.com, FIDE), discover local tournaments, and pay entry fees with GCash or QR Ph via PayMongo.
 
 ## Setup
 
@@ -19,7 +19,7 @@ Required:
 Optional:
 
 - `LICHESS_CLIENT_ID` — Lichess OAuth app client id (PKCE; no secret)
-- `PAYMONGO_SECRET_KEY` / `PAYMONGO_WEBHOOK_SECRET` — paid tournament registration (GCash)
+- `PAYMONGO_SECRET_KEY` / `PAYMONGO_WEBHOOK_SECRET` — paid tournament registration (GCash, QR Ph)
 
 2. Start MySQL and sync schema:
 
@@ -28,6 +28,8 @@ pnpm db:start   # docker compose
 pnpm db:push
 # If upgrading from Stripe columns locally:
 node --env-file=.env scripts/migrate-paymongo.mjs
+# If adding Lichess vs OTB modality on an existing DB:
+node --env-file=.env scripts/migrate-tournament-modality.mjs
 ```
 
 3. Run the app:
@@ -81,14 +83,21 @@ UPDATE user SET role = 'admin' WHERE email = 'you@example.com';
 
 ## PayMongo (paid tournaments)
 
-Entry fees use PayMongo Hosted Checkout with **GCash** and **PHP** only. ChessHub is the merchant of record.
+Entry fees use PayMongo Hosted Checkout with **GCash**, **QR Ph**, and **PHP** only. ChessHub is the merchant of record.
 
 1. Create a PayMongo account and complete KYC.
 2. Copy your secret key (`sk_test_…` or `sk_live_…`) into `PAYMONGO_SECRET_KEY`.
-3. In the PayMongo dashboard, enable GCash under payment methods.
-4. Add a webhook endpoint pointing to `https://your-domain/api/paymongo/webhook` and subscribe to `checkout_session.payment.paid`.
+3. In the PayMongo dashboard, enable GCash and QR Ph under payment methods.
+4. Add a webhook endpoint pointing to `https://your-domain/api/paymongo/webhook` (full path — not the site root) and subscribe to `checkout_session.payment.paid`.
 5. Copy the webhook signing secret into `PAYMONGO_WEBHOOK_SECRET`.
 
 ChessHub also confirms payment when the player returns to the success URL (by retrieving the Checkout Session). That covers local development where PayMongo cannot reach `localhost` webhooks. For production, still configure the webhook.
 
-For local development, expose your app with a tunnel (e.g. ngrok) and register that URL as the webhook endpoint if you want webhook-only confirmation.
+For local development with GCash / QR Ph:
+
+1. Expose the app with a tunnel, e.g. `ngrok http 5173 --request-header-add "ngrok-skip-browser-warning: true"`.
+2. Set `ORIGIN` to that HTTPS tunnel URL (not `http://localhost:5173`).
+3. Open ChessHub **through the tunnel URL** so checkout success/cancel redirects return to a host your phone can reach.
+4. Register `https://your-tunnel/api/paymongo/webhook` in PayMongo (not just `https://your-tunnel/`) and subscribe to `checkout_session.payment.paid`, `payment.failed`, and `qrph.expired`. Put the signing secret in `PAYMONGO_WEBHOOK_SECRET`.
+
+If `ORIGIN` stays on localhost, PayMongo redirects and webhooks cannot reach your machine after mobile payment — registration stays pending even when GCash succeeds.

@@ -1,0 +1,36 @@
+---
+description: Lichess API integration conventions for ChessHub
+globs: "**/lichess*.{js,ts,svelte},**/api/chess/lichess/**/*,**/chess/lichess*"
+alwaysApply: false
+---
+
+# Lichess API (ChessHub)
+
+Follow the **lichess-api** skill and `Lichessorg API reference.json` (v2.0.153).
+
+## Must follow
+
+- Base URL: `https://lichess.org` (API paths under `/api/...` unless the OpenAPI says otherwise).
+- **Serialize** outbound Lichess HTTP calls (one at a time). On **429**, wait ≥ 1 minute and reduce frequency.
+- Send `User-Agent: ChessHub/1.0 (tournament platform)` (or extend that string — do not drop it).
+- Tokens and PKCE verifiers: **server-only**. Never expose in client bundles or URLs.
+- OAuth: Authorization Code + **PKCE S256** only. No refresh tokens. Support token strings ≥ 512 chars matching `^[A-Za-z0-9_]+$`.
+- ChessHub account linking uses: `email:read preference:read tournament:write`.
+- Tournament **results** (`/api/tournament/{id}/results`, `/api/swiss/{id}/results`): `Accept: application/x-ndjson`; parse with `parseLichessNdjson`. Import prizes only when the event is **finished**.
+
+## Prefer existing helpers
+
+- `src/lib/server/chess/lichess.js` — OAuth, account, public ratings
+- `src/lib/server/chess/lichess-tournaments.js` — Arena create (rated), ID normalize, finish check, standings, prize match
+
+```js
+// ❌ BAD — parallel bursts / inventing clients
+await Promise.all(ids.map((id) => fetch(`https://lichess.org/api/tournament/${id}`)));
+
+// ✅ GOOD — reuse helpers, sequential, finished-only results
+const standings = await fetchLichessTournamentStandings(id, 'arena');
+```
+
+## Out of scope for prize import
+
+Do not treat team-battle awards, simuls, studies, or OTB manual scores as supported Lichess prize sources unless product explicitly expands support.

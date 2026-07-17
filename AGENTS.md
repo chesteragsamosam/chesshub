@@ -6,6 +6,14 @@
 
 ---
 
+## Lichess skills
+
+When working on Lichess OAuth, ratings, Arena/Swiss standings, or API clients, use the **lichess-api** skill (`.agents/skills/lichess-api/`) and the OpenAPI mirror `Lichessorg API reference.json`.
+
+When working on organizer guides, prize rules, payout holds, advertising, or fair-play event policy, use the **lichess-events** skill (`.agents/skills/lichess-events/`) sourced from `LichessEventTips.txt`.
+
+---
+
 You are able to use the Svelte MCP server, where you have access to comprehensive Svelte 5 and SvelteKit documentation. Here's how to use the available tools effectively:
 
 ## Available Svelte MCP Tools:

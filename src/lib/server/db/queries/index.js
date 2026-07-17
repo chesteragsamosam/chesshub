@@ -1,16 +1,34 @@
-import { and, eq, gte, lte, desc, asc, sql, like, or, inArray, not } from 'drizzle-orm';
+import { and, eq, gte, lte, desc, asc, sql, like, or, inArray, not, isNull } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import {
 	profile,
 	chessAccount,
 	socialLink,
 	tournament,
+	tournamentPrize,
+	tournamentAward,
+	prizeClaim,
 	tournamentRegistration,
 	organizerRequest,
 	userFollow,
 	user
 } from '$lib/server/db/schema';
 import { createId } from '$lib/server/id';
+
+/**
+ * Strip server-only Arena password before sending a tournament to the client.
+ * @template {Record<string, unknown>} T
+ * @param {T | null | undefined} row
+ */
+export function toPublicTournament(row) {
+	if (!row) return null;
+	const {
+		lichessArenaPassword: _secret,
+		lichessArenaSettings: _settings,
+		...publicRow
+	} = row;
+	return publicRow;
+}
 
 /**
  * @param {string} userId
@@ -529,18 +547,25 @@ export async function recommendUsersToFollow(viewerId, limit = 10) {
 		consider(candidate, reason, 0);
 	}
 
-	return [...ranked.values()]
-		.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
-		.slice(0, limit)
-		.map(({ score: _score, ...userRow }) => userRow);
+	return (
+		[...ranked.values()]
+			.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+			.slice(0, limit)
+			// The score is internal ranking metadata, not part of the public result.
+			// eslint-disable-next-line no-unused-vars
+			.map(({ score: _score, ...userRow }) => userRow)
+	);
 }
 
 /**
- * @param {{ city?: string, country?: string, from?: Date, to?: Date, latitude?: number, longitude?: number }} filters
+ * @param {{ modality?: 'lichess' | 'otb', city?: string, country?: string, from?: Date, to?: Date, latitude?: number, longitude?: number }} filters
  */
 export async function searchTournaments(filters) {
 	const conditions = [eq(tournament.status, 'published')];
 
+	if (filters.modality) {
+		conditions.push(eq(tournament.modality, filters.modality));
+	}
 	if (filters.city) {
 		conditions.push(eq(tournament.city, filters.city));
 	}
@@ -560,8 +585,10 @@ export async function searchTournaments(filters) {
 		.where(and(...conditions))
 		.orderBy(asc(tournament.startDate));
 
+	const publicResults = results.map((t) => toPublicTournament(t) ?? t);
+
 	if (filters.latitude != null && filters.longitude != null) {
-		return results
+		return publicResults
 			.map((t) => {
 				if (t.latitude == null || t.longitude == null) {
 					return { ...t, distanceKm: null };
@@ -581,7 +608,7 @@ export async function searchTournaments(filters) {
 			});
 	}
 
-	return results.map((t) => ({ ...t, distanceKm: null }));
+	return publicResults.map((t) => ({ ...t, distanceKm: null }));
 }
 
 /**
@@ -594,20 +621,34 @@ export async function getTournamentById(id) {
 
 /**
  * @param {string} organizerId
+ * @param {{ modality?: 'lichess' | 'otb', from?: Date, to?: Date }} [filters]
  */
-export async function getTournamentsByOrganizer(organizerId) {
+export async function getTournamentsByOrganizer(organizerId, filters = {}) {
+	const conditions = [eq(tournament.organizerId, organizerId)];
+
+	if (filters.modality) {
+		conditions.push(eq(tournament.modality, filters.modality));
+	}
+	if (filters.from) {
+		conditions.push(gte(tournament.startDate, filters.from));
+	}
+	if (filters.to) {
+		conditions.push(lte(tournament.startDate, filters.to));
+	}
+
 	return db
 		.select()
 		.from(tournament)
-		.where(eq(tournament.organizerId, organizerId))
-		.orderBy(desc(tournament.startDate));
+		.where(and(...conditions))
+		.orderBy(desc(tournament.startDate))
+		.then((rows) => rows.map((row) => toPublicTournament(row) ?? row));
 }
 
 /**
  * @param {import('$lib/server/db/schema').tournament.$inferInsert} data
  */
 export async function createTournament(data) {
-	const id = createId();
+	const id = data.id ?? createId();
 	await db.insert(tournament).values({ ...data, id });
 	return getTournamentById(id);
 }
@@ -619,6 +660,283 @@ export async function createTournament(data) {
 export async function updateTournament(id, data) {
 	await db.update(tournament).set(data).where(eq(tournament.id, id));
 	return getTournamentById(id);
+}
+
+/**
+ * @param {string} tournamentId
+ */
+export async function listTournamentPrizes(tournamentId) {
+	return db
+		.select()
+		.from(tournamentPrize)
+		.where(eq(tournamentPrize.tournamentId, tournamentId))
+		.orderBy(asc(tournamentPrize.placement));
+}
+
+/**
+ * Replace all prize tiers before results are finalized.
+ * @param {string} tournamentId
+ * @param {Array<{ placement: number, label: string, amountCents: number }>} prizes
+ */
+export async function replaceTournamentPrizes(tournamentId, prizes) {
+	return db.transaction(async (tx) => {
+		const [row] = await tx
+			.select({ resultsFinalizedAt: tournament.resultsFinalizedAt })
+			.from(tournament)
+			.where(eq(tournament.id, tournamentId))
+			.limit(1);
+		if (!row || row.resultsFinalizedAt) return false;
+
+		await tx.delete(tournamentPrize).where(eq(tournamentPrize.tournamentId, tournamentId));
+		if (prizes.length > 0) {
+			await tx.insert(tournamentPrize).values(
+				prizes.map((prize) => ({
+					id: createId(),
+					tournamentId,
+					placement: prize.placement,
+					label: prize.label,
+					amountCents: prize.amountCents
+				}))
+			);
+		}
+		return true;
+	});
+}
+
+/**
+ * Atomically save the Lichess source and prize tiers before finalization.
+ * @param {string} tournamentId
+ * @param {{ lichessTournamentId: string, lichessTournamentFormat: 'arena' | 'swiss' }} source
+ * @param {Array<{ placement: number, label: string, amountCents: number }>} prizes
+ */
+export async function saveTournamentPrizeSetup(tournamentId, source, prizes) {
+	return db.transaction(async (tx) => {
+		const [row] = await tx
+			.select({ resultsFinalizedAt: tournament.resultsFinalizedAt })
+			.from(tournament)
+			.where(eq(tournament.id, tournamentId))
+			.limit(1)
+			.for('update');
+		if (!row || row.resultsFinalizedAt) return false;
+
+		await tx.update(tournament).set(source).where(eq(tournament.id, tournamentId));
+		await tx.delete(tournamentPrize).where(eq(tournamentPrize.tournamentId, tournamentId));
+		await tx.insert(tournamentPrize).values(
+			prizes.map((prize) => ({
+				id: createId(),
+				tournamentId,
+				placement: prize.placement,
+				label: prize.label,
+				amountCents: prize.amountCents
+			}))
+		);
+		return true;
+	});
+}
+
+/**
+ * Paid registrants with a verified linked Lichess account.
+ * @param {string} tournamentId
+ */
+export async function listEligibleLichessPlayers(tournamentId) {
+	return db
+		.select({
+			userId: user.id,
+			name: user.name,
+			username: user.username,
+			lichessUsername: chessAccount.username
+		})
+		.from(tournamentRegistration)
+		.innerJoin(user, eq(user.id, tournamentRegistration.userId))
+		.innerJoin(
+			chessAccount,
+			and(
+				eq(chessAccount.userId, user.id),
+				eq(chessAccount.platform, 'lichess'),
+				eq(chessAccount.verified, true)
+			)
+		)
+		.where(
+			and(
+				eq(tournamentRegistration.tournamentId, tournamentId),
+				eq(tournamentRegistration.status, 'paid')
+			)
+		);
+}
+
+/**
+ * Finalize immutable awards and create one unclaimed claim per winner.
+ * @param {string} tournamentId
+ * @param {Array<{ prizeId: string, userId: string, placement: number, lichessUsername: string, prizeLabel: string, amountCents: number }>} awards
+ */
+export async function finalizeTournamentAwards(tournamentId, awards) {
+	return db.transaction(async (tx) => {
+		const updateResult = await tx
+			.update(tournament)
+			.set({ resultsFinalizedAt: new Date(), status: 'completed' })
+			.where(and(eq(tournament.id, tournamentId), isNull(tournament.resultsFinalizedAt)));
+		const affectedRows =
+			/** @type {any} */ (updateResult)?.[0]?.affectedRows ??
+			/** @type {any} */ (updateResult)?.affectedRows ??
+			0;
+		if (affectedRows !== 1) return false;
+
+		for (const award of awards) {
+			const awardId = createId();
+			await tx.insert(tournamentAward).values({
+				id: awardId,
+				tournamentId,
+				prizeId: award.prizeId,
+				userId: award.userId,
+				placement: award.placement,
+				lichessUsername: award.lichessUsername,
+				prizeLabel: award.prizeLabel,
+				amountCents: award.amountCents
+			});
+			await tx.insert(prizeClaim).values({
+				id: createId(),
+				awardId,
+				status: 'unclaimed'
+			});
+		}
+		return true;
+	});
+}
+
+/**
+ * @param {string} tournamentId
+ */
+export async function listTournamentAwards(tournamentId) {
+	return db
+		.select({
+			id: tournamentAward.id,
+			tournamentId: tournamentAward.tournamentId,
+			userId: tournamentAward.userId,
+			placement: tournamentAward.placement,
+			lichessUsername: tournamentAward.lichessUsername,
+			prizeLabel: tournamentAward.prizeLabel,
+			amountCents: tournamentAward.amountCents,
+			name: user.name,
+			username: user.username,
+			image: user.image,
+			claimId: prizeClaim.id,
+			claimStatus: prizeClaim.status,
+			destinationMasked: prizeClaim.destinationMasked,
+			recipientName: prizeClaim.recipientName,
+			failureCode: prizeClaim.failureCode,
+			failureReason: prizeClaim.failureReason,
+			claimedAt: prizeClaim.claimedAt,
+			paidAt: prizeClaim.paidAt
+		})
+		.from(tournamentAward)
+		.innerJoin(user, eq(user.id, tournamentAward.userId))
+		.innerJoin(prizeClaim, eq(prizeClaim.awardId, tournamentAward.id))
+		.where(eq(tournamentAward.tournamentId, tournamentId))
+		.orderBy(asc(tournamentAward.placement));
+}
+
+/**
+ * @param {string} tournamentId
+ * @param {string} userId
+ */
+export async function getTournamentAwardForUser(tournamentId, userId) {
+	const [row] = await db
+		.select({
+			award: tournamentAward,
+			claim: prizeClaim
+		})
+		.from(tournamentAward)
+		.innerJoin(prizeClaim, eq(prizeClaim.awardId, tournamentAward.id))
+		.where(and(eq(tournamentAward.tournamentId, tournamentId), eq(tournamentAward.userId, userId)))
+		.limit(1);
+	return row ?? null;
+}
+
+/**
+ * Reserve an unclaimed or failed claim before making an external payout call.
+ * @param {string} claimId
+ * @param {string} userId
+ * @param {{ destinationMasked: string, recipientName: string }} recipient
+ */
+export async function reservePrizeClaim(claimId, userId, recipient) {
+	return db.transaction(async (tx) => {
+		const [current] = await tx
+			.select({ status: prizeClaim.status })
+			.from(prizeClaim)
+			.innerJoin(tournamentAward, eq(tournamentAward.id, prizeClaim.awardId))
+			.where(and(eq(prizeClaim.id, claimId), eq(tournamentAward.userId, userId)))
+			.limit(1);
+		if (!current || !['unclaimed', 'failed'].includes(current.status)) return null;
+
+		const updateResult = await tx
+			.update(prizeClaim)
+			.set({
+				status: 'processing',
+				destinationMasked: recipient.destinationMasked,
+				recipientName: recipient.recipientName,
+				failureCode: null,
+				failureReason: null,
+				claimedAt: new Date(),
+				attemptCount: sql`${prizeClaim.attemptCount} + 1`
+			})
+			.where(and(eq(prizeClaim.id, claimId), eq(prizeClaim.status, current.status)));
+		const affectedRows =
+			/** @type {any} */ (updateResult)?.[0]?.affectedRows ??
+			/** @type {any} */ (updateResult)?.affectedRows ??
+			0;
+		if (affectedRows !== 1) return null;
+
+		const [reserved] = await tx
+			.select({
+				claim: prizeClaim,
+				award: tournamentAward
+			})
+			.from(prizeClaim)
+			.innerJoin(tournamentAward, eq(tournamentAward.id, prizeClaim.awardId))
+			.where(eq(prizeClaim.id, claimId))
+			.limit(1);
+		return reserved ?? null;
+	});
+}
+
+/**
+ * @param {string} claimId
+ * @param {{ paymongoWalletTransactionId?: string | null, paymongoTransferId?: string | null, paymongoReferenceNumber?: string | null, status?: 'processing' | 'paid' | 'failed', failureCode?: string | null, failureReason?: string | null, paidAt?: Date | null }} data
+ */
+export async function updatePrizeClaim(claimId, data) {
+	await db.update(prizeClaim).set(data).where(eq(prizeClaim.id, claimId));
+}
+
+/**
+ * @param {string} claimId
+ */
+export async function getPrizeClaimById(claimId) {
+	const [row] = await db.select().from(prizeClaim).where(eq(prizeClaim.id, claimId)).limit(1);
+	return row ?? null;
+}
+
+/**
+ * @param {string} walletTransactionId
+ */
+export async function getPrizeClaimByWalletTransaction(walletTransactionId) {
+	const [row] = await db
+		.select()
+		.from(prizeClaim)
+		.where(eq(prizeClaim.paymongoWalletTransactionId, walletTransactionId))
+		.limit(1);
+	return row ?? null;
+}
+
+/**
+ * @param {string} transferId
+ */
+export async function getPrizeClaimByPaymongoTransfer(transferId) {
+	const [row] = await db
+		.select()
+		.from(prizeClaim)
+		.where(eq(prizeClaim.paymongoTransferId, transferId))
+		.limit(1);
+	return row ?? null;
 }
 
 /**
@@ -709,10 +1027,22 @@ export async function createRegistration(tournamentId, userId) {
 
 /**
  * @param {string} id
- * @param {{ status?: 'pending' | 'paid' | 'cancelled' | 'refunded', paymongoCheckoutSessionId?: string | null, paymongoPaymentId?: string | null, paidAt?: Date | null }} data
+ * @param {{ status?: 'pending' | 'paid' | 'cancelled' | 'refunded', paymongoCheckoutSessionId?: string | null, paymongoPaymentId?: string | null, paidAt?: Date | null, lichessJoinedAt?: Date | null }} data
  */
 export async function updateRegistration(id, data) {
 	await db.update(tournamentRegistration).set(data).where(eq(tournamentRegistration.id, id));
+	const [row] = await db
+		.select()
+		.from(tournamentRegistration)
+		.where(eq(tournamentRegistration.id, id))
+		.limit(1);
+	return row ?? null;
+}
+
+/**
+ * @param {string} id
+ */
+export async function getRegistrationById(id) {
 	const [row] = await db
 		.select()
 		.from(tournamentRegistration)
