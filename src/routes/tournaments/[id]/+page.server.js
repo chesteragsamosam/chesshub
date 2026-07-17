@@ -5,11 +5,10 @@ import {
 	getRegistration,
 	countPaidRegistrations,
 	createRegistration,
-	updateRegistration,
-	getStripeConnectAccount
+	updateRegistration
 } from '$lib/server/db/queries';
 import { requireUser } from '$lib/server/auth-guards';
-import { createCheckoutSession, isStripeConfigured } from '$lib/server/stripe';
+import { createCheckoutSession, isPaymongoConfigured } from '$lib/server/paymongo';
 import { env } from '$env/dynamic/private';
 
 /** @type {import('./$types').PageServerLoad} */
@@ -26,9 +25,7 @@ export async function load(event) {
 	const [organizer, paidCount, registration] = await Promise.all([
 		getUserById(tournament.organizerId),
 		countPaidRegistrations(tournament.id),
-		event.locals.user
-			? getRegistration(tournament.id, event.locals.user.id)
-			: Promise.resolve(null)
+		event.locals.user ? getRegistration(tournament.id, event.locals.user.id) : Promise.resolve(null)
 	]);
 
 	return {
@@ -44,10 +41,8 @@ export async function load(event) {
 		paidCount,
 		registration,
 		spotsLeft:
-			tournament.maxPlayers != null
-				? Math.max(0, tournament.maxPlayers - paidCount)
-				: null,
-		stripeConfigured: isStripeConfigured(),
+			tournament.maxPlayers != null ? Math.max(0, tournament.maxPlayers - paidCount) : null,
+		paymongoConfigured: isPaymongoConfigured(),
 		checkoutResult: event.url.searchParams.get('checkout')
 	};
 }
@@ -82,15 +77,12 @@ export const actions = {
 			return { success: true, free: true };
 		}
 
-		if (!isStripeConfigured()) {
+		if (!isPaymongoConfigured()) {
 			return fail(503, { message: 'Payments are not configured yet' });
 		}
 
-		const connect = await getStripeConnectAccount(tournament.organizerId);
-		if (!connect?.onboardingComplete) {
-			return fail(400, {
-				message: 'The organizer has not finished payment setup for this event'
-			});
+		if ((tournament.currency || 'php').toLowerCase() !== 'php') {
+			return fail(400, { message: 'Paid tournaments must use PHP currency for GCash' });
 		}
 
 		let registration = existing;
@@ -102,23 +94,24 @@ export const actions = {
 		}
 
 		const origin = env.ORIGIN || event.url.origin;
-	const session = await createCheckoutSession({
-		tournament,
-		registrationId: registration.id,
-		user,
-		stripeAccountId: connect.stripeAccountId,
-		successUrl: `${origin}/tournaments/${tournament.id}?checkout=success`,
-		cancelUrl: `${origin}/tournaments/${tournament.id}?checkout=cancelled`
-	});
 
-	if (!session.url) {
-		return fail(500, { message: 'Could not start checkout' });
-	}
+		let session;
+		try {
+			session = await createCheckoutSession({
+				tournament,
+				registrationId: registration.id,
+				user,
+				successUrl: `${origin}/tournaments/${tournament.id}?checkout=success`,
+				cancelUrl: `${origin}/tournaments/${tournament.id}?checkout=cancelled`
+			});
+		} catch {
+			return fail(500, { message: 'Could not start checkout' });
+		}
 
-	await updateRegistration(registration.id, {
-		stripeCheckoutSessionId: session.id
-	});
+		await updateRegistration(registration.id, {
+			paymongoCheckoutSessionId: session.id
+		});
 
-	redirect(303, session.url);
+		redirect(303, session.url);
 	}
 };

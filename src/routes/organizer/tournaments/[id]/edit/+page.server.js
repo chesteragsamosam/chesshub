@@ -1,10 +1,7 @@
 import { error, fail } from '@sveltejs/kit';
 import { requireOrganizer } from '$lib/server/auth-guards';
-import {
-	getTournamentById,
-	updateTournament,
-	getStripeConnectAccount
-} from '$lib/server/db/queries';
+import { getTournamentById, updateTournament } from '$lib/server/db/queries';
+import { isPaymongoConfigured } from '$lib/server/paymongo';
 
 /** @param {Date | string | null | undefined} d */
 function toLocalInput(d) {
@@ -24,14 +21,13 @@ export async function load(event) {
 		error(403, 'Not your tournament');
 	}
 
-	const stripeAccount = await getStripeConnectAccount(user.id);
 	return {
 		tournament: {
 			...tournament,
 			startDateLocal: toLocalInput(tournament.startDate),
 			endDateLocal: toLocalInput(tournament.endDate)
 		},
-		stripeAccount
+		paymongoConfigured: isPaymongoConfigured()
 	};
 }
 
@@ -44,7 +40,6 @@ export const actions = {
 			return fail(403, { message: 'Forbidden' });
 		}
 
-		const stripeAccount = await getStripeConnectAccount(user.id);
 		const formData = await event.request.formData();
 
 		const title = formData.get('title')?.toString().trim() ?? '';
@@ -56,7 +51,7 @@ export const actions = {
 		const startDateRaw = formData.get('startDate')?.toString() ?? '';
 		const endDateRaw = formData.get('endDate')?.toString() ?? '';
 		const entryFee = Number(formData.get('entryFee')?.toString() ?? '0');
-		const currency = (formData.get('currency')?.toString() || 'usd').toLowerCase();
+		const currency = (formData.get('currency')?.toString() || 'php').toLowerCase();
 		const maxPlayersRaw = formData.get('maxPlayers')?.toString() ?? '';
 		const status = formData.get('status')?.toString() ?? 'draft';
 
@@ -83,13 +78,18 @@ export const actions = {
 			return fail(400, { message: 'Country must be a 2-letter ISO code' });
 		}
 
+		if (currency !== 'php') {
+			return fail(400, { message: 'Currency must be PHP for GCash payments' });
+		}
+
 		if (!['draft', 'published', 'cancelled', 'completed'].includes(status)) {
 			return fail(400, { message: 'Invalid status' });
 		}
 
-		if (status === 'published' && entryFeeCents > 0 && !stripeAccount?.onboardingComplete) {
+		if (status === 'published' && entryFeeCents > 0 && !isPaymongoConfigured()) {
 			return fail(400, {
-				message: 'Connect Stripe and finish onboarding before publishing paid tournaments'
+				message:
+					'PayMongo is not configured. Set PAYMONGO_SECRET_KEY before publishing paid tournaments'
 			});
 		}
 

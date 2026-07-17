@@ -82,18 +82,6 @@ export const organizerRequest = mysqlTable(
 	(table) => [index('organizer_request_user_idx').on(table.userId)]
 );
 
-export const stripeConnectAccount = mysqlTable('stripe_connect_account', {
-	id: varchar('id', { length: 36 }).primaryKey(),
-	userId: varchar('user_id', { length: 36 }).notNull().unique(),
-	stripeAccountId: varchar('stripe_account_id', { length: 255 }).notNull().unique(),
-	onboardingComplete: boolean('onboarding_complete').default(false).notNull(),
-	createdAt: timestamp('created_at', { fsp: 3 }).defaultNow().notNull(),
-	updatedAt: timestamp('updated_at', { fsp: 3 })
-		.defaultNow()
-		.$onUpdate(() => new Date())
-		.notNull()
-});
-
 export const tournament = mysqlTable(
 	'tournament',
 	{
@@ -110,7 +98,7 @@ export const tournament = mysqlTable(
 		startDate: timestamp('start_date', { fsp: 3 }).notNull(),
 		endDate: timestamp('end_date', { fsp: 3 }),
 		entryFeeCents: int('entry_fee_cents').default(0).notNull(),
-		currency: varchar('currency', { length: 3 }).default('usd').notNull(),
+		currency: varchar('currency', { length: 3 }).default('php').notNull(),
 		maxPlayers: int('max_players'),
 		status: mysqlEnum('status', ['draft', 'published', 'cancelled', 'completed'])
 			.default('draft')
@@ -137,8 +125,8 @@ export const tournamentRegistration = mysqlTable(
 		status: mysqlEnum('status', ['pending', 'paid', 'cancelled', 'refunded'])
 			.default('pending')
 			.notNull(),
-		stripeCheckoutSessionId: varchar('stripe_checkout_session_id', { length: 255 }),
-		stripePaymentIntentId: varchar('stripe_payment_intent_id', { length: 255 }),
+		paymongoCheckoutSessionId: varchar('paymongo_checkout_session_id', { length: 255 }),
+		paymongoPaymentId: varchar('paymongo_payment_id', { length: 255 }),
 		paidAt: timestamp('paid_at', { fsp: 3 }),
 		createdAt: timestamp('created_at', { fsp: 3 }).defaultNow().notNull()
 	},

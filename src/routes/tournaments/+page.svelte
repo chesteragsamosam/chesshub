@@ -9,7 +9,7 @@
 		if (!cents) return 'Free';
 		return new Intl.NumberFormat(undefined, {
 			style: 'currency',
-			currency: (currency || 'usd').toUpperCase()
+			currency: (currency || 'php').toUpperCase()
 		}).format(cents / 100);
 	}
 
