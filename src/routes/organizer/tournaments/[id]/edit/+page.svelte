@@ -1,10 +1,13 @@
 <script>
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
+	import VenueMapPicker from '$lib/components/VenueMapPicker.svelte';
+	import SponsorListEditor from '$lib/components/SponsorListEditor.svelte';
 
 	let { data, form } = $props();
 
 	const canEditModality = $derived(data.tournament.status === 'draft');
+	const mapsConfigured = $derived(Boolean(data.googleMapsApiKey));
 
 	/** @type {'lichess' | 'otb'} */
 	let modality = $state(
@@ -74,8 +77,8 @@
 							checked={modality === 'otb'}
 							onchange={() => (modality = 'otb')}
 						/>
-						<span class="modality-title">OTB local</span>
-						<span class="modality-desc">In-person club or venue event.</span>
+						<span class="modality-title">OTB</span>
+						<span class="modality-desc">Club or venue event.</span>
 					</label>
 				</div>
 			</fieldset>
@@ -83,7 +86,7 @@
 			<input type="hidden" name="modality" value={data.tournament.modality} />
 			<p class="modality-locked">
 				Event type:
-				<strong>{data.tournament.modality === 'otb' ? 'OTB local' : 'Lichess'}</strong>
+				<strong>{data.tournament.modality === 'otb' ? 'OTB' : 'Lichess'}</strong>
 				<span class="hint">(locked after publish)</span>
 			</p>
 		{/if}
@@ -114,30 +117,75 @@
 		</label>
 
 		{#if modality === 'otb'}
+			{#if !mapsConfigured}
+				<p class="alert alert-error">
+					Venue maps aren’t available right now. Contact the site admin before posting an OTB
+					event.
+				</p>
+			{:else}
+				<section class="venue-section stack-sm">
+					<h2 class="section-title">Venue pin <span class="req" aria-hidden="true">*</span></h2>
+					<p class="field-hint venue-lede">
+						Players need the exact venue on the map before you can post.
+					</p>
+					<VenueMapPicker
+						apiKey={data.googleMapsApiKey}
+						value={{
+							venue: data.tournament.venue,
+							city: data.tournament.city,
+							state: data.tournament.state,
+							country: data.tournament.country,
+							latitude: data.tournament.latitude,
+							longitude: data.tournament.longitude
+						}}
+					/>
+				</section>
+			{/if}
+
 			<div class="grid-2">
 				<label class="field">
-					Venue
-					<input type="text" name="venue" value={data.tournament.venue ?? ''} />
-				</label>
-				<label class="field">
-					City
-					<input type="text" name="city" value={data.tournament.city ?? ''} />
-				</label>
-				<label class="field">
-					State / region
-					<input type="text" name="state" value={data.tournament.state ?? ''} />
-				</label>
-				<label class="field">
-					Country (ISO)
+					Clock (minutes)
 					<input
-						type="text"
-						name="country"
-						maxlength="2"
-						value={data.tournament.country ?? ''}
-						class="uppercase"
+						type="number"
+						name="clockTime"
+						min="0"
+						step="0.5"
+						required
+						value={data.tournament.clockTime ?? 90}
+					/>
+				</label>
+				<label class="field">
+					Increment (seconds)
+					<input
+						type="number"
+						name="clockIncrement"
+						min="0"
+						step="1"
+						value={data.tournament.clockIncrement ?? 0}
+					/>
+				</label>
+				<label class="field">
+					Delay (seconds)
+					<input
+						type="number"
+						name="clockDelay"
+						min="0"
+						step="1"
+						value={data.tournament.clockDelay ?? 0}
 					/>
 				</label>
 			</div>
+			{#if data.tournament.timeControl}
+				<p class="field-hint">
+					Classified as <strong>{data.tournament.timeControl.label}</strong>
+					({data.tournament.timeControl.clock}).
+				</p>
+			{/if}
+		{:else if data.tournament.timeControl}
+			<p class="field-hint">
+				Time control: <strong>{data.tournament.timeControl.label}</strong>
+				· {data.tournament.timeControl.clock}
+			</p>
 		{/if}
 
 		<div class="grid-2">
@@ -194,6 +242,8 @@
 				</select>
 			</label>
 		</div>
+
+		<SponsorListEditor initial={data.sponsors} open={data.sponsors.length > 0} />
 
 		{#if form?.message}
 			<p class="alert alert-error">{form.message}</p>
@@ -313,6 +363,22 @@
 		@media (min-width: $breakpoint-sm) {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
+	}
+
+	.venue-section {
+		padding-top: $space-2;
+	}
+
+	.venue-lede,
+	.field-hint {
+		margin: 0;
+		font-size: $font-size-sm;
+		color: $color-text-muted;
+	}
+
+	.req {
+		color: $color-danger;
+		font-weight: $font-weight-semibold;
 	}
 
 	:global(input.uppercase) {

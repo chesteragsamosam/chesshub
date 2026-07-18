@@ -21,6 +21,12 @@
 		"db:migrate-modality": "node --env-file=.env scripts/migrate-tournament-modality.mjs",
 		"db:migrate-arena-password": "node --env-file=.env scripts/migrate-lichess-arena-password.mjs",
 		"db:migrate-social-facebook": "node --env-file=.env scripts/migrate-social-facebook.mjs",
+		"db:migrate-facebook-deletion": "node --env-file=.env scripts/migrate-facebook-data-deletion.mjs",
+		"db:migrate-chess-account-fide": "node --env-file=.env scripts/migrate-chess-account-fide.mjs",
+		"db:migrate-chess-account-ratings": "node --env-file=.env scripts/migrate-chess-account-ratings.mjs",
+		"db:migrate-tournament-clock": "node --env-file=.env scripts/migrate-tournament-clock.mjs",
+		"db:migrate-tournament-sponsors": "node --env-file=.env scripts/migrate-tournament-sponsors.mjs",
+		"ratings:refresh": "node --env-file=.env scripts/refresh-ratings.mjs",
 		"db:seed": "node --env-file=.env scripts/seed-players.mjs",
 		"auth:schema": "better-auth generate --config src/lib/server/auth.js --output src/lib/server/db/auth.schema.js --yes"
 	},

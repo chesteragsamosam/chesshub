@@ -92,6 +92,16 @@
 	<main class="site-main">
 		{@render children()}
 	</main>
+
+	<footer class="site-footer">
+		<div class="footer-inner">
+			<p class="footer-brand">ChessHub</p>
+			<nav class="footer-links" aria-label="Legal">
+				<a href={resolve('/privacy')}>Privacy Policy</a>
+				<a href={resolve('/data-deletion')}>Data deletion</a>
+			</nav>
+		</div>
+	</footer>
 </div>
 
 <style lang="scss">
@@ -298,6 +308,48 @@
 	.site-main {
 		flex: 1;
 		width: 100%;
+	}
+
+	.site-footer {
+		border-top: $border-width solid color-mix(in srgb, $color-border 70%, transparent);
+		background: color-mix(in srgb, $color-bg 92%, $color-surface);
+	}
+
+	.footer-inner {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		justify-content: space-between;
+		gap: $space-3 $space-6;
+		width: 100%;
+		max-width: $size-container-lg;
+		margin-inline: auto;
+		padding: $space-5 $space-4;
+	}
+
+	.footer-brand {
+		margin: 0;
+		color: $color-text-muted;
+		font-family: $font-display;
+		font-size: $font-size-sm;
+		font-weight: $font-weight-semibold;
+	}
+
+	.footer-links {
+		display: flex;
+		flex-wrap: wrap;
+		gap: $space-4;
+
+		a {
+			color: $color-text-muted;
+			font-size: $font-size-sm;
+			text-decoration: none;
+
+			&:hover {
+				color: $color-primary;
+				text-decoration: underline;
+			}
+		}
 	}
 
 	.sr-only {

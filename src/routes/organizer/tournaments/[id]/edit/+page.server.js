@@ -1,7 +1,15 @@
 import { error, fail } from '@sveltejs/kit';
 import { requireOrganizer } from '$lib/server/auth-guards';
-import { getTournamentById, updateTournament, toPublicTournament } from '$lib/server/db/queries';
+import {
+	getTournamentById,
+	listTournamentSponsors,
+	replaceTournamentSponsors,
+	updateTournament,
+	toPublicTournament
+} from '$lib/server/db/queries';
 import { isPaymongoConfigured } from '$lib/server/paymongo';
+import { parseOptionalSponsors, parseOtbLocation } from '$lib/server/tournament-form';
+import { env as publicEnv } from '$env/dynamic/public';
 
 /** @param {Date | string | null | undefined} d */
 function toLocalInput(d) {
@@ -22,6 +30,7 @@ export async function load(event) {
 	}
 
 	const publicTournament = toPublicTournament(tournament) ?? tournament;
+	const sponsors = await listTournamentSponsors(tournament.id);
 
 	return {
 		tournament: {
@@ -29,6 +38,8 @@ export async function load(event) {
 			startDateLocal: toLocalInput(tournament.startDate),
 			endDateLocal: toLocalInput(tournament.endDate)
 		},
+		sponsors,
+		googleMapsApiKey: publicEnv.PUBLIC_GOOGLE_MAPS_API_KEY?.trim() || '',
 		paymongoConfigured: isPaymongoConfigured(),
 		justCreated: event.url.searchParams.get('created') === '1'
 	};
@@ -47,10 +58,6 @@ export const actions = {
 
 		const title = formData.get('title')?.toString().trim() ?? '';
 		const description = formData.get('description')?.toString().trim() ?? '';
-		const venue = formData.get('venue')?.toString().trim() ?? '';
-		const city = formData.get('city')?.toString().trim() ?? '';
-		const state = formData.get('state')?.toString().trim() ?? '';
-		const country = formData.get('country')?.toString().trim().toUpperCase() ?? '';
 		const startDateRaw = formData.get('startDate')?.toString() ?? '';
 		const endDateRaw = formData.get('endDate')?.toString() ?? '';
 		const entryFee = Number(formData.get('entryFee')?.toString() ?? '0');
@@ -58,6 +65,9 @@ export const actions = {
 		const maxPlayersRaw = formData.get('maxPlayers')?.toString() ?? '';
 		const status = formData.get('status')?.toString() ?? 'draft';
 		const modalityRaw = formData.get('modality')?.toString() ?? tournament.modality;
+		const clockTimeRaw = formData.get('clockTime')?.toString() ?? '';
+		const clockIncrementRaw = formData.get('clockIncrement')?.toString() ?? '0';
+		const clockDelayRaw = formData.get('clockDelay')?.toString() ?? '0';
 
 		if (!title || !startDateRaw) {
 			return fail(400, { message: 'Title and start date are required' });
@@ -73,8 +83,42 @@ export const actions = {
 			modality = tournament.modality;
 		}
 
-		if (modality === 'otb' && !venue && !city) {
-			return fail(400, { message: 'OTB events need at least a venue or city' });
+		if (modality === 'otb' && !publicEnv.PUBLIC_GOOGLE_MAPS_API_KEY?.trim()) {
+			return fail(400, {
+				message: 'Venue maps aren’t available right now. Contact the site admin.'
+			});
+		}
+
+		const location = parseOtbLocation(formData, modality);
+		if (location.error) {
+			return fail(400, { message: location.error });
+		}
+
+		/** @type {number | null} */
+		let clockTime = tournament.clockTime ?? null;
+		/** @type {number} */
+		let clockIncrement = tournament.clockIncrement ?? 0;
+		/** @type {number} */
+		let clockDelay = tournament.clockDelay ?? 0;
+
+		if (modality === 'otb') {
+			clockTime = Number(clockTimeRaw);
+			clockIncrement = Number(clockIncrementRaw);
+			clockDelay = Number(clockDelayRaw);
+			if (!Number.isFinite(clockTime) || clockTime < 0) {
+				return fail(400, { message: 'Enter a valid clock time in minutes' });
+			}
+			if (!Number.isFinite(clockIncrement) || clockIncrement < 0) {
+				return fail(400, { message: 'Enter a valid increment in seconds' });
+			}
+			if (!Number.isFinite(clockDelay) || clockDelay < 0) {
+				return fail(400, { message: 'Enter a valid delay in seconds' });
+			}
+			if (clockTime + clockIncrement + clockDelay <= 0) {
+				return fail(400, {
+					message: 'Clock time plus increment or delay must be greater than zero'
+				});
+			}
 		}
 
 		const startDate = new Date(startDateRaw);
@@ -92,10 +136,6 @@ export const actions = {
 			return fail(400, { message: 'Invalid entry fee' });
 		}
 
-		if (country && !/^[A-Z]{2}$/.test(country)) {
-			return fail(400, { message: 'Country must be a 2-letter ISO code' });
-		}
-
 		if (currency !== 'php') {
 			return fail(400, { message: 'Currency must be PHP for GCash or QR Ph payments' });
 		}
@@ -107,8 +147,13 @@ export const actions = {
 		if (status === 'published' && entryFeeCents > 0 && !isPaymongoConfigured()) {
 			return fail(400, {
 				message:
-					'PayMongo is not configured. Set PAYMONGO_SECRET_KEY before publishing paid tournaments'
+					'Paid registrations aren’t available yet. Contact the site admin to enable payments.'
 			});
+		}
+
+		const sponsorParse = parseOptionalSponsors(formData);
+		if (sponsorParse.error) {
+			return fail(400, { message: sponsorParse.error });
 		}
 
 		const maxPlayers = maxPlayersRaw ? Number(maxPlayersRaw) : null;
@@ -117,17 +162,24 @@ export const actions = {
 			title,
 			description: description || null,
 			modality,
-			venue: modality === 'otb' ? venue || null : null,
-			city: modality === 'otb' ? city || null : null,
-			state: modality === 'otb' ? state || null : null,
-			country: modality === 'otb' ? country || null : null,
+			venue: location.venue,
+			city: location.city,
+			state: location.state,
+			country: location.country,
+			latitude: location.latitude,
+			longitude: location.longitude,
 			startDate,
 			endDate,
 			entryFeeCents,
 			currency,
 			maxPlayers: maxPlayers && Number.isFinite(maxPlayers) ? maxPlayers : null,
+			...(modality === 'otb'
+				? { clockTime, clockIncrement, clockDelay }
+				: {}),
 			status: /** @type {'draft' | 'published' | 'cancelled' | 'completed'} */ (status)
 		});
+
+		await replaceTournamentSponsors(tournament.id, sponsorParse.sponsors ?? []);
 
 		return { success: true };
 	}

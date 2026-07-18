@@ -1,0 +1,58 @@
+---
+description: Plain-language UI/UX copy for normal users
+globs: "**/*.{svelte,js}"
+alwaysApply: false
+---
+
+# UI copy — plain language
+
+Write for players and organizers, not developers. Short beats thorough.
+
+## Principles
+
+- **One short sentence** for page ledes and section hints. Cut second sentences unless they change what the user should do.
+- Prefer everyday words over product/infra jargon.
+- Explain chess terms only when the user must act on them (e.g. where to find a FIDE ID).
+- Errors tell the user what happened and what to try next — never internals.
+
+## Avoid in user-facing UI
+
+| Don't say | Say instead |
+|---|---|
+| OAuth, PKCE, callback, webhook | link / sign-in / connect |
+| configured on this server / env vars | isn’t available right now |
+| ISO (country) | country code (e.g. PH) |
+| OTB / modality | OTB / Lichess (chess players know OTB) |
+| allow list, cron, cached, API, NDJSON | omit or paraphrase |
+| public profile / shareable link | your profile / profile link |
+| invalid state, session (tech) | Something went wrong / timed out |
+| federation (alone) | country (or show the code with “country”) |
+| verified (unexplained) | confirmed |
+
+Legal/privacy pages and organizer deep-dive guides may keep precise terms when accuracy requires it. Flash messages, buttons, filters, badges, and empty states on player pages must stay plain.
+
+## Examples
+
+```svelte
+<!-- ❌ BAD -->
+<p class="page-lede">
+  Browse players sorted by cached FIDE standard when linked (refreshed daily by cron).
+</p>
+<span>OAuth not configured</span>
+<label>Country (ISO)</label>
+
+<!-- ✅ GOOD -->
+<p class="page-lede">Find players by name or chess account.</p>
+<span>Linking unavailable</span>
+<label>Country code</label>
+```
+
+```js
+// ❌ BAD
+'Lichess OAuth is not configured on this server.'
+'Country must be a 2-letter ISO code'
+
+// ✅ GOOD
+'Lichess linking isn’t available right now. Please try again later.'
+'Use a 2-letter country code, like PH or US'
+```

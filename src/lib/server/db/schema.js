@@ -35,13 +35,23 @@ export const chessAccount = mysqlTable(
 		username: varchar('username', { length: 255 }).notNull(),
 		externalId: varchar('external_id', { length: 255 }),
 		displayName: varchar('display_name', { length: 255 }),
+		/** FIDE federation code (e.g. PHI), set when linking a FIDE account */
+		federation: varchar('federation', { length: 3 }),
+		/** FIDE title (e.g. GM, IM), set when linking a FIDE account */
+		title: varchar('title', { length: 10 }),
+		/** Primary rating for sorting / compact display */
+		rating: int('rating'),
+		/** JSON map of time-control ratings (standard/blitz/…) */
+		ratingsJson: text('ratings_json'),
+		ratingsUpdatedAt: timestamp('ratings_updated_at', { fsp: 3 }),
 		verified: boolean('verified').default(false).notNull(),
 		accessToken: text('access_token'),
 		linkedAt: timestamp('linked_at', { fsp: 3 }).defaultNow().notNull()
 	},
 	(table) => [
 		uniqueIndex('chess_account_user_platform_idx').on(table.userId, table.platform),
-		index('chess_account_user_idx').on(table.userId)
+		index('chess_account_user_idx').on(table.userId),
+		index('chess_account_federation_idx').on(table.federation)
 	]
 );
 
@@ -102,6 +112,12 @@ export const tournament = mysqlTable(
 		entryFeeCents: int('entry_fee_cents').default(0).notNull(),
 		currency: varchar('currency', { length: 3 }).default('php').notNull(),
 		maxPlayers: int('max_players'),
+		/** Initial clock in minutes (Lichess + OTB). */
+		clockTime: double('clock_time'),
+		/** Fischer increment seconds. */
+		clockIncrement: int('clock_increment').default(0),
+		/** Bronstein / simple delay seconds. */
+		clockDelay: int('clock_delay').default(0),
 		lichessTournamentId: varchar('lichess_tournament_id', { length: 64 }),
 		lichessTournamentFormat: mysqlEnum('lichess_tournament_format', ['arena', 'swiss']),
 		/** Server-only Arena password; never expose to clients. */
@@ -147,6 +163,24 @@ export const tournamentPrize = mysqlTable(
 		uniqueIndex('tournament_prize_placement_idx').on(table.tournamentId, table.placement),
 		index('tournament_prize_tournament_idx').on(table.tournamentId)
 	]
+);
+
+/** Optional sponsor list for Lichess and OTB tournaments. */
+export const tournamentSponsor = mysqlTable(
+	'tournament_sponsor',
+	{
+		id: varchar('id', { length: 36 }).primaryKey(),
+		tournamentId: varchar('tournament_id', { length: 36 }).notNull(),
+		name: varchar('name', { length: 255 }).notNull(),
+		url: varchar('url', { length: 512 }),
+		sortOrder: int('sort_order').default(0).notNull(),
+		createdAt: timestamp('created_at', { fsp: 3 }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { fsp: 3 })
+			.defaultNow()
+			.$onUpdate(() => new Date())
+			.notNull()
+	},
+	(table) => [index('tournament_sponsor_tournament_idx').on(table.tournamentId)]
 );
 
 export const tournamentAward = mysqlTable(
@@ -234,6 +268,29 @@ export const userFollow = mysqlTable(
 		uniqueIndex('user_follow_pair_idx').on(table.followerId, table.followingId),
 		index('user_follow_follower_idx').on(table.followerId),
 		index('user_follow_following_idx').on(table.followingId)
+	]
+);
+
+/**
+ * Meta / Facebook data-deletion callback tracking (status page by confirmation code).
+ */
+export const facebookDataDeletionRequest = mysqlTable(
+	'facebook_data_deletion_request',
+	{
+		id: varchar('id', { length: 36 }).primaryKey(),
+		confirmationCode: varchar('confirmation_code', { length: 64 }).notNull().unique(),
+		facebookUserId: varchar('facebook_user_id', { length: 255 }).notNull(),
+		chessHubUserId: varchar('chesshub_user_id', { length: 36 }),
+		status: mysqlEnum('status', ['received', 'completed', 'not_found', 'failed'])
+			.default('received')
+			.notNull(),
+		details: text('details'),
+		createdAt: timestamp('created_at', { fsp: 3 }).defaultNow().notNull(),
+		completedAt: timestamp('completed_at', { fsp: 3 })
+	},
+	(table) => [
+		index('facebook_deletion_code_idx').on(table.confirmationCode),
+		index('facebook_deletion_fb_user_idx').on(table.facebookUserId)
 	]
 );
 

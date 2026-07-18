@@ -36,7 +36,7 @@
 	</div>
 	<div class="feature">
 		<h2 class="section-title">Paid registration</h2>
-		<p>Register and pay entry fees securely with GCash or QR Ph via PayMongo.</p>
+		<p>Register and pay entry fees with GCash or QR Ph.</p>
 	</div>
 </section>
 

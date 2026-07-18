@@ -49,6 +49,7 @@ export async function load(event) {
 		username: dbUser?.username ?? null,
 		profileSlug: profileSlug({ id: current.id, username: dbUser?.username }),
 		lichessConfigured: Boolean(env.LICHESS_CLIENT_ID),
+		chessComConfigured: Boolean(env.CHESSCOM_CLIENT_ID),
 		flash: {
 			linked: event.url.searchParams.get('linked'),
 			error: event.url.searchParams.get('error')
@@ -65,7 +66,7 @@ export const actions = {
 		const country = formData.get('country')?.toString().toUpperCase() ?? '';
 
 		if (country && !/^[A-Z]{2}$/.test(country)) {
-			return fail(400, { profileMessage: 'Country must be a 2-letter ISO code' });
+			return fail(400, { profileMessage: 'Use a 2-letter country code, like PH or US' });
 		}
 
 		await updateProfile(user.id, {
@@ -178,7 +179,10 @@ export const actions = {
 			username: result.username,
 			externalId: result.externalId,
 			displayName: result.displayName,
-			verified: true
+			rating: result.rating,
+			ratings: result.ratings,
+			// Username entry is not Chess.com sign-in; OAuth linking sets verified.
+			verified: false
 		});
 
 		if (result.avatar) {
@@ -205,6 +209,10 @@ export const actions = {
 			username: result.username,
 			externalId: result.externalId,
 			displayName: result.displayName,
+			federation: result.federation,
+			title: result.title,
+			rating: result.rating,
+			ratings: result.ratings,
 			verified: true
 		});
 

@@ -23,6 +23,16 @@ export const PLATFORM_RATING_KEYS = {
 	fide: ['standard', 'rapid', 'blitz']
 };
 
+/** Time controls shown on top-rated leaderboards (no Bullet for FIDE). */
+export const LEADERBOARD_RATING_KEYS = {
+	fide: ['standard', 'rapid', 'blitz'],
+	lichess: ['bullet', 'blitz', 'rapid', 'classical'],
+	chesscom: ['bullet', 'blitz', 'rapid', 'classical']
+};
+
+/** @type {readonly string[]} */
+export const LEADERBOARD_PLATFORMS = ['fide', 'chesscom', 'lichess'];
+
 /** @type {Record<string, string>} */
 export const PLATFORM_LABELS = {
 	lichess: 'Lichess',
@@ -44,7 +54,6 @@ export function ratingEntries(platform, ratings, fallbackRating = null) {
 	for (const key of keys) {
 		const value = ratings?.[key];
 		if (typeof value === 'number' && Number.isFinite(value)) {
-			console.log(platform, key, value);
 			entries.push({
 				key,
 				label: RATING_LABELS[key] ?? key,
@@ -79,6 +88,18 @@ export function classicalRating(platform, ratings) {
 }
 
 /**
+ * FIDE standard rating from a linked FIDE account, if present.
+ * @param {Array<{ platform: string, ratings?: ChessRatings | null }>} accounts
+ * @returns {number | null}
+ */
+export function fideStandardRating(accounts) {
+	const fide = accounts.find((account) => account.platform === 'fide');
+	if (!fide?.ratings) return null;
+	const value = fide.ratings.standard;
+	return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/**
  * Highest classical rating across linked chess accounts.
  * @param {Array<{ platform: string, ratings?: ChessRatings | null }>} accounts
  * @returns {number | null}
@@ -94,6 +115,15 @@ export function bestClassicalRating(accounts) {
 	}
 
 	return best;
+}
+
+/**
+ * Preferred ranking rating: FIDE standard when linked, else best classical.
+ * @param {Array<{ platform: string, ratings?: ChessRatings | null }>} accounts
+ * @returns {number | null}
+ */
+export function rankingRating(accounts) {
+	return fideStandardRating(accounts) ?? bestClassicalRating(accounts);
 }
 
 /**

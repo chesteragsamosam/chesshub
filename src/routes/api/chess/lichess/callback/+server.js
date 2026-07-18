@@ -58,6 +58,8 @@ export async function GET(event) {
 			username: account.username,
 			externalId: account.externalId,
 			displayName: account.displayName,
+			rating: account.rating,
+			ratings: account.ratings,
 			verified: true,
 			accessToken: token.access_token
 		});

@@ -11,8 +11,10 @@
 	let { data, form } = $props();
 
 	let previewUrl = $state(null);
+	let copied = $state(false);
 
-	const profileUrl = $derived(`${$page.url.origin}/profile/${data.profileSlug}`);
+	const profilePath = $derived(`/profile/${data.profileSlug}`);
+	const profileUrl = $derived(`${$page.url.origin}${profilePath}`);
 	const displayImage = $derived(previewUrl ?? data.user?.image ?? null);
 	const externalImage = $derived(data.user ? externalImageUrl(data.user.image, data.user.id) : '');
 	const hasUploadedAvatar = $derived(
@@ -34,6 +36,18 @@
 		previewUrl = file ? URL.createObjectURL(file) : null;
 	}
 
+	async function copyProfileLink() {
+		try {
+			await navigator.clipboard.writeText(profileUrl);
+			copied = true;
+			setTimeout(() => {
+				copied = false;
+			}, 2000);
+		} catch {
+			// ignore
+		}
+	}
+
 	/** @param {string} platform */
 	function chessAccount(platform) {
 		return data.chessAccounts.find(
@@ -51,11 +65,18 @@
 
 	const flashMessages = {
 		lichess: 'Lichess account linked.',
-		lichess_not_configured: 'Lichess OAuth is not configured on this server.',
-		lichess_denied: 'Lichess authorization was denied.',
-		lichess_expired: 'Lichess link session expired. Try again.',
-		lichess_state: 'Lichess link failed (invalid state). Try again.',
-		lichess_failed: 'Could not link Lichess account. Try again.'
+		lichess_not_configured: 'Lichess linking isn’t available right now. Please try again later.',
+		lichess_denied: 'Lichess linking was cancelled. You can try again anytime.',
+		lichess_expired: 'That Lichess link timed out. Please try again.',
+		lichess_state: 'Something went wrong linking Lichess. Please try again.',
+		lichess_failed: 'Could not link Lichess. Please try again.',
+		chesscom: 'Chess.com account linked.',
+		chesscom_not_configured:
+			'Chess.com linking isn’t available right now. Please try again later.',
+		chesscom_denied: 'Chess.com linking was cancelled. You can try again anytime.',
+		chesscom_expired: 'That Chess.com link timed out. Please try again.',
+		chesscom_state: 'Something went wrong linking Chess.com. Please try again.',
+		chesscom_failed: 'Could not link Chess.com. Please try again.'
 	};
 </script>
 
@@ -63,8 +84,8 @@
 	<header>
 		<h1 class="page-title">Profile settings</h1>
 		<p class="page-lede">
-			Update your bio and link chess platforms and social accounts.
-			<a href={resolve(`/profile/${data.profileSlug}`)} class="link">View public profile</a>
+			Update your bio and chess accounts.
+			<a href={resolve(`/profile/${data.profileSlug}`)} class="link">View your profile</a>
 		</p>
 	</header>
 
@@ -92,7 +113,7 @@
 	<section class="panel stack-sm">
 		<div>
 			<h2 class="section-title">Display name</h2>
-			<p class="page-lede">Shown on your public profile and in tournament lists.</p>
+			<p class="page-lede">Shown on your profile and in tournament lists.</p>
 		</div>
 		<form method="post" action="?/updateName" use:enhance class="stack-sm">
 			<label class="field">
@@ -118,7 +139,7 @@
 	<section class="panel stack-sm">
 		<div>
 			<h2 class="section-title">Username</h2>
-			<p class="page-lede">Your shareable profile link uses this username.</p>
+			<p class="page-lede">This becomes your profile link.</p>
 		</div>
 		<form method="post" action="?/updateUsername" use:enhance class="stack-sm">
 			<label class="field">
@@ -139,17 +160,22 @@
 				</div>
 			</label>
 			{#if data.username}
-				<p class="profile-url">{profileUrl}</p>
+				<div class="share-row">
+					<code class="profile-url">{profilePath}</code>
+					<button type="button" class="btn btn-secondary" onclick={copyProfileLink}>
+						{copied ? 'Copied' : 'Copy link'}
+					</button>
+				</div>
 			{:else}
 				<p class="alert alert-warning">
-					Choose a username so friends can open your profile with a short link.
+					Choose a username so friends can find your profile.
 				</p>
 			{/if}
 			{#if form?.usernameMessage}
 				<p class="alert alert-error">{form.usernameMessage}</p>
 			{/if}
 			{#if form?.usernameSuccess}
-				<p class="alert alert-success">Username saved. Share your profile link with friends.</p>
+				<p class="alert alert-success">Username saved.</p>
 			{/if}
 			<button type="submit" class="btn btn-primary">Save username</button>
 		</form>
@@ -175,9 +201,7 @@
 						onchange={onPhotoSelected}
 					/>
 				</label>
-				<p class="hint">
-					JPEG, PNG, WebP, or GIF up to 5 MB. Images are resized and compressed automatically.
-				</p>
+				<p class="hint">JPG, PNG, WebP, or GIF up to 5 MB.</p>
 				<label class="field">
 					Or paste image URL
 					<input
@@ -188,11 +212,8 @@
 					/>
 				</label>
 				{#if hasUploadedAvatar}
-					<p class="hint">
-						You have an uploaded photo saved. Choose a new file or URL to replace it.
-					</p>
+					<p class="hint">Choose a new file or URL to replace your current photo.</p>
 				{/if}
-				<p class="hint">Link Chess.com and your avatar can import automatically.</p>
 				{#if form?.photoMessage}
 					<p class="alert alert-error">{form.photoMessage}</p>
 				{/if}
@@ -224,12 +245,12 @@
 					<input type="text" name="city" value={data.profile?.city ?? ''} />
 				</label>
 				<label class="field">
-					Country (ISO)
+					Country code
 					<input
 						type="text"
 						name="country"
 						maxlength="2"
-						placeholder="US"
+						placeholder="PH"
 						value={data.profile?.country ?? ''}
 						class="uppercase"
 					/>
@@ -257,7 +278,7 @@
 							{@const entries = ratingEntries('lichess', acc.ratings, acc.rating)}
 							<p class="hint">
 								Linked as <strong>{acc.username}</strong>
-								{#if acc.verified}· verified{/if}
+								{#if acc.verified}· confirmed{/if}
 							</p>
 							{#if entries.length}
 								<ul class="rating-chips">
@@ -281,20 +302,21 @@
 					{:else if data.lichessConfigured}
 						<a href={resolve('/api/chess/lichess/start')} class="btn btn-ink">Link Lichess</a>
 					{:else}
-						<span class="hint">OAuth not configured</span>
+						<span class="hint">Linking unavailable</span>
 					{/if}
 				</div>
 			</div>
 
 			<div class="platform">
-				<h3>Chess.com</h3>
-				{#if chessAccount('chesscom')}
-					{@const acc = chessAccount('chesscom')}
-					{@const entries = ratingEntries('chesscom', acc.ratings, acc.rating)}
-					<div class="platform-head">
-						<div>
+				<div class="platform-head">
+					<div>
+						<h3>Chess.com</h3>
+						{#if chessAccount('chesscom')}
+							{@const acc = chessAccount('chesscom')}
+							{@const entries = ratingEntries('chesscom', acc.ratings, acc.rating)}
 							<p class="hint">
 								Linked as <strong>{acc.username}</strong>
+								{#if acc.verified}· confirmed{/if}
 							</p>
 							{#if entries.length}
 								<ul class="rating-chips">
@@ -306,23 +328,29 @@
 									{/each}
 								</ul>
 							{/if}
-						</div>
+						{:else}
+							<p class="hint">Not linked</p>
+						{/if}
+					</div>
+					{#if chessAccount('chesscom')}
 						<form method="post" action="?/unlinkChess" use:enhance>
 							<input type="hidden" name="platform" value="chesscom" />
 							<button type="submit" class="btn btn-danger">Unlink</button>
 						</form>
-					</div>
-				{:else}
-					<form method="post" action="?/linkChessCom" use:enhance class="inline-form">
-						<input type="text" name="username" placeholder="Username" required />
-						<button type="submit" class="btn btn-ink">Link</button>
-					</form>
-					{#if form?.chessComMessage}
-						<p class="alert alert-error">{form.chessComMessage}</p>
+					{:else if data.chessComConfigured}
+						<a href={resolve('/api/chess/chesscom/start')} class="btn btn-ink">Link Chess.com</a>
+					{:else}
+						<form method="post" action="?/linkChessCom" use:enhance class="inline-form">
+							<input type="text" name="username" placeholder="Username" required />
+							<button type="submit" class="btn btn-ink">Link</button>
+						</form>
 					{/if}
-					{#if form?.chessComSuccess}
-						<p class="alert alert-success">Chess.com linked.</p>
-					{/if}
+				</div>
+				{#if form?.chessComMessage}
+					<p class="alert alert-error">{form.chessComMessage}</p>
+				{/if}
+				{#if form?.chessComSuccess}
+					<p class="alert alert-success">Chess.com linked.</p>
 				{/if}
 			</div>
 
@@ -334,7 +362,8 @@
 					<div class="platform-head">
 						<div>
 							<p class="hint">
-								ID <strong>{acc.username}</strong>
+								FIDE #<strong>{acc.username}</strong>
+								{#if acc.federation}· {acc.federation}{/if}
 								{#if acc.displayName}· {acc.displayName}{/if}
 							</p>
 							{#if entries.length}
@@ -355,9 +384,10 @@
 					</div>
 				{:else}
 					<form method="post" action="?/linkFide" use:enhance class="inline-form">
-						<input type="text" name="fideId" placeholder="FIDE ID" required />
+						<input type="text" name="fideId" placeholder="e.g. 5200016" required />
 						<button type="submit" class="btn btn-ink">Link</button>
 					</form>
+					<p class="hint">Your number from ratings.fide.com</p>
 					{#if form?.fideMessage}
 						<p class="alert alert-error">{form.fideMessage}</p>
 					{/if}
@@ -432,13 +462,22 @@
 		text-transform: uppercase;
 	}
 
+	.share-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: $space-2;
+	}
+
 	.profile-url {
 		margin: 0;
-		padding: $space-3;
+		padding: $space-2 $space-3;
 		border-radius: $radius-md;
-		background: $color-bg;
+		background: color-mix(in srgb, $color-bg 55%, $color-surface);
+		border: $border-width solid $color-border;
 		font-family: ui-monospace, monospace;
 		font-size: $font-size-sm;
+		color: color-mix(in srgb, $color-text 85%, transparent);
 	}
 
 	.photo-row {
@@ -536,12 +575,15 @@
 		margin-top: $space-3;
 
 		input {
+			min-width: calc(var(--spacing) * 40);
 			min-height: $size-touch-min;
 			padding: $space-2 $space-3;
 			border: $border-width solid $color-border;
 			border-radius: $radius-md;
 			font: inherit;
 			font-size: $font-size-sm;
+			color: $color-text;
+			background-color: color-mix(in srgb, $color-bg 45%, $color-surface);
 		}
 	}
 

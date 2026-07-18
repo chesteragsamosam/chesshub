@@ -19,11 +19,18 @@ import {
 import {
 	createTournament,
 	getChessAccount,
-	replaceTournamentPrizes
+	replaceTournamentPrizes,
+	replaceTournamentSponsors
 } from '$lib/server/db/queries';
 import { createId } from '$lib/server/id';
 import { isPaymongoConfigured } from '$lib/server/paymongo';
+import {
+	field,
+	parseOptionalSponsors,
+	parseOtbLocation
+} from '$lib/server/tournament-form';
 import { env } from '$env/dynamic/private';
+import { env as publicEnv } from '$env/dynamic/public';
 
 /** @returns {string} */
 function generateArenaPassword() {
@@ -39,6 +46,7 @@ export async function load(event) {
 	return {
 		paymongoConfigured: isPaymongoConfigured(),
 		lichessConfigured: Boolean(env.LICHESS_CLIENT_ID),
+		googleMapsApiKey: publicEnv.PUBLIC_GOOGLE_MAPS_API_KEY?.trim() || '',
 		canCreateLichessArena,
 		lichessUsername: lichessAccount?.username ?? null,
 		clockTimes: LICHESS_ARENA_CLOCK_TIMES,
@@ -50,14 +58,6 @@ export async function load(event) {
 		maxRatings: LICHESS_ARENA_MAX_RATINGS,
 		accountAges: LICHESS_ARENA_ACCOUNT_AGES
 	};
-}
-
-/**
- * @param {FormData} formData
- * @param {string} key
- */
-function field(formData, key) {
-	return formData.get(key)?.toString().trim() ?? '';
 }
 
 /**
@@ -114,10 +114,6 @@ export const actions = {
 		const modalityRaw = field(formData, 'modality') || 'lichess';
 		const title = field(formData, 'title');
 		const description = field(formData, 'description');
-		const venue = field(formData, 'venue');
-		const city = field(formData, 'city');
-		const state = field(formData, 'state');
-		const country = field(formData, 'country').toUpperCase();
 		const startDateRaw = field(formData, 'startDate');
 		const entryFeeRaw = field(formData, 'entryFee') || '0';
 		const currency = (field(formData, 'currency') || 'php').toLowerCase();
@@ -125,6 +121,7 @@ export const actions = {
 		const publish = formData.get('publish') === 'on';
 		const clockTimeRaw = field(formData, 'clockTime') || '3';
 		const clockIncrementRaw = field(formData, 'clockIncrement') || '0';
+		const clockDelayRaw = field(formData, 'clockDelay') || '0';
 		const arenaMinutesRaw = field(formData, 'arenaMinutes') || '60';
 		const minRatedGamesRaw = field(formData, 'minRatedGames') || '10';
 		const variant = field(formData, 'variant') || 'standard';
@@ -144,10 +141,12 @@ export const actions = {
 			modality: modalityRaw,
 			title,
 			description,
-			venue,
-			city,
-			state,
-			country,
+			venue: field(formData, 'venue'),
+			city: field(formData, 'city'),
+			state: field(formData, 'state'),
+			country: field(formData, 'country'),
+			latitude: field(formData, 'latitude'),
+			longitude: field(formData, 'longitude'),
 			startDate: startDateRaw,
 			entryFee: entryFeeRaw,
 			currency,
@@ -155,6 +154,7 @@ export const actions = {
 			publish,
 			clockTime: clockTimeRaw,
 			clockIncrement: clockIncrementRaw,
+			clockDelay: clockDelayRaw,
 			arenaMinutes: arenaMinutesRaw,
 			minRatedGames: minRatedGamesRaw,
 			variant,
@@ -171,7 +171,7 @@ export const actions = {
 		};
 
 		if (modalityRaw !== 'lichess' && modalityRaw !== 'otb') {
-			return fail(400, { ...bounce, message: 'Choose Lichess or OTB local' });
+			return fail(400, { ...bounce, message: 'Choose Lichess or OTB' });
 		}
 
 		/** @type {'lichess' | 'otb'} */
@@ -181,10 +181,34 @@ export const actions = {
 			return fail(400, { ...bounce, message: 'Title and start date are required' });
 		}
 
-		if (modality === 'otb' && !venue && !city) {
+		if (modality === 'otb' && !publicEnv.PUBLIC_GOOGLE_MAPS_API_KEY?.trim()) {
 			return fail(400, {
 				...bounce,
-				message: 'OTB events need at least a venue or city'
+				message: 'Venue maps aren’t available right now. Contact the site admin.'
+			});
+		}
+
+		const location = parseOtbLocation(formData, modality);
+		if (location.error) {
+			return fail(400, { ...bounce, message: location.error });
+		}
+
+		const clockTime = Number(clockTimeRaw);
+		const clockIncrement = Number(clockIncrementRaw);
+		const clockDelay = Number(clockDelayRaw);
+		if (!Number.isFinite(clockTime) || clockTime < 0) {
+			return fail(400, { ...bounce, message: 'Enter a valid clock time in minutes' });
+		}
+		if (!Number.isFinite(clockIncrement) || clockIncrement < 0) {
+			return fail(400, { ...bounce, message: 'Enter a valid increment in seconds' });
+		}
+		if (!Number.isFinite(clockDelay) || clockDelay < 0) {
+			return fail(400, { ...bounce, message: 'Enter a valid delay in seconds' });
+		}
+		if (clockTime + clockIncrement + clockDelay <= 0) {
+			return fail(400, {
+				...bounce,
+				message: 'Clock time plus increment or delay must be greater than zero'
 			});
 		}
 
@@ -208,10 +232,6 @@ export const actions = {
 			return fail(400, { ...bounce, message: 'Invalid entry fee' });
 		}
 
-		if (country && !/^[A-Z]{2}$/.test(country)) {
-			return fail(400, { ...bounce, message: 'Country must be a 2-letter ISO code' });
-		}
-
 		if (currency !== 'php') {
 			return fail(400, { ...bounce, message: 'Currency must be PHP for GCash or QR Ph payments' });
 		}
@@ -222,13 +242,19 @@ export const actions = {
 		}
 		const prizes = prizeParse.prizes ?? [];
 
+		const sponsorParse = parseOptionalSponsors(formData);
+		if (sponsorParse.error) {
+			return fail(400, { ...bounce, message: sponsorParse.error });
+		}
+		const sponsors = sponsorParse.sponsors ?? [];
+
 		let status = /** @type {'draft' | 'published'} */ ('draft');
 		if (publish) {
 			if (entryFeeCents > 0 && !isPaymongoConfigured()) {
 				return fail(400, {
 					...bounce,
 					message:
-						'PayMongo is not configured. Set PAYMONGO_SECRET_KEY before publishing paid tournaments'
+						'Paid registrations aren’t available yet. Contact the site admin to enable payments.'
 				});
 			}
 			status = 'published';
@@ -264,8 +290,6 @@ export const actions = {
 			const accountAgeDays = accountAgeRaw ? Number(accountAgeRaw) : null;
 			const arenaPassword = generateArenaPassword();
 			const arenaDescription = buildChessHubArenaDescription(joinUrl, description);
-			const clockTime = Number(clockTimeRaw);
-			const clockIncrement = Number(clockIncrementRaw);
 			const seededAllowList = formatLichessAllowList([lichessAccount.username]);
 
 			const arenaParams = {
@@ -316,15 +340,20 @@ export const actions = {
 			title,
 			description: description || null,
 			modality,
-			venue: modality === 'otb' ? venue || null : null,
-			city: modality === 'otb' ? city || null : null,
-			state: modality === 'otb' ? state || null : null,
-			country: modality === 'otb' ? country || null : null,
+			venue: location.venue,
+			city: location.city,
+			state: location.state,
+			country: location.country,
+			latitude: location.latitude,
+			longitude: location.longitude,
 			startDate,
 			endDate,
 			entryFeeCents,
 			currency,
 			maxPlayers: maxPlayers && Number.isFinite(maxPlayers) ? maxPlayers : null,
+			clockTime,
+			clockIncrement,
+			clockDelay: modality === 'otb' ? clockDelay : 0,
 			status,
 			lichessTournamentId,
 			lichessTournamentFormat,
@@ -334,6 +363,9 @@ export const actions = {
 
 		if (prizes.length > 0 && tournament) {
 			await replaceTournamentPrizes(tournament.id, prizes);
+		}
+		if (sponsors.length > 0 && tournament) {
+			await replaceTournamentSponsors(tournament.id, sponsors);
 		}
 
 		redirect(

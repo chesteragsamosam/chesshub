@@ -6,6 +6,7 @@ import {
 	countPaidRegistrations,
 	listPaidRegistrations,
 	listTournamentPrizes,
+	listTournamentSponsors,
 	listTournamentAwards,
 	getTournamentAwardForUser,
 	reservePrizeClaim,
@@ -40,6 +41,7 @@ import {
 import { ensureArenaLive } from '$lib/server/chess/arena-live-hub';
 import { syncChessHubTournamentAllowList } from '$lib/server/chess/arena-allow-list';
 import { resolveAppOrigin } from '$lib/server/app-origin';
+import { env as publicEnv } from '$env/dynamic/public';
 
 /**
  * @param {NonNullable<Awaited<ReturnType<typeof getTournamentById>>>} tournament
@@ -161,16 +163,25 @@ export async function load(event) {
 
 	const checkoutNotice = checkoutNoticeForOutcome(checkoutOutcome);
 
-	const [organizer, paidCount, registeredPlayers, prizes, awards, viewerAward, lichessAccount] =
-		await Promise.all([
-			getUserById(tournament.organizerId),
-			countPaidRegistrations(tournament.id),
-			listPaidRegistrations(tournament.id),
-			listTournamentPrizes(tournament.id),
-			listTournamentAwards(tournament.id),
-			event.locals.user ? getTournamentAwardForUser(tournament.id, event.locals.user.id) : null,
-			event.locals.user ? getChessAccount(event.locals.user.id, 'lichess') : null
-		]);
+	const [
+		organizer,
+		paidCount,
+		registeredPlayers,
+		prizes,
+		sponsors,
+		awards,
+		viewerAward,
+		lichessAccount
+	] = await Promise.all([
+		getUserById(tournament.organizerId),
+		countPaidRegistrations(tournament.id),
+		listPaidRegistrations(tournament.id),
+		listTournamentPrizes(tournament.id),
+		listTournamentSponsors(tournament.id),
+		listTournamentAwards(tournament.id),
+		event.locals.user ? getTournamentAwardForUser(tournament.id, event.locals.user.id) : null,
+		event.locals.user ? getChessAccount(event.locals.user.id, 'lichess') : null
+	]);
 
 	/** @type {Awaited<ReturnType<typeof ensureArenaLive>>['snapshot']} */
 	let lichessLive = null;
@@ -230,7 +241,9 @@ export async function load(event) {
 			tournamentRow.maxPlayers != null ? Math.max(0, tournamentRow.maxPlayers - paidCount) : null,
 		paymongoConfigured: isPaymongoConfigured(),
 		disbursementsConfigured: isPaymongoDisbursementConfigured(),
+		googleMapsApiKey: publicEnv.PUBLIC_GOOGLE_MAPS_API_KEY?.trim() || '',
 		prizes,
+		sponsors,
 		awards,
 		viewerAward,
 		checkoutOutcome,
@@ -259,7 +272,7 @@ export const actions = {
 			return fail(400, {
 				message:
 					tournament.status === 'draft'
-						? 'This tournament is still a draft. Publish it before players can register.'
+						? 'This tournament isn’t published yet, so registration is closed.'
 						: 'Registration is not open for this tournament.'
 			});
 		}
@@ -358,7 +371,7 @@ export const actions = {
 			return fail(400, {
 				message:
 					tournament.status === 'draft'
-						? 'This tournament is still a draft. Publish it before players can join.'
+						? 'This tournament isn’t published yet.'
 						: 'This tournament is not open for joining.'
 			});
 		}
@@ -389,12 +402,12 @@ export const actions = {
 			if (!synced.synced) {
 				return fail(502, {
 					message:
-						'Could not update the Lichess allow list. Ask the organizer to reconnect Lichess, then try again.'
+						'Could not update who can join on Lichess. Ask the organizer to reconnect Lichess, then try again.'
 				});
 			}
 		} catch (err) {
 			const message =
-				err instanceof Error ? err.message : 'Could not update the Lichess allow list';
+				err instanceof Error ? err.message : 'Could not update who can join on Lichess';
 			return fail(502, { message });
 		}
 
@@ -433,7 +446,7 @@ export const actions = {
 			return fail(400, { message: 'Tournament prizes are not finalized' });
 		}
 		if (!isPaymongoDisbursementConfigured()) {
-			return fail(503, { message: 'GCash prize payouts are not configured yet' });
+			return fail(503, { message: 'GCash prize payouts aren’t available yet' });
 		}
 
 		const winner = await getTournamentAwardForUser(tournament.id, user.id);

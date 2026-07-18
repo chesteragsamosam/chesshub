@@ -2,6 +2,8 @@
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/stores';
+	import VenueMapPicker from '$lib/components/VenueMapPicker.svelte';
+	import SponsorListEditor from '$lib/components/SponsorListEditor.svelte';
 
 	let { data, form } = $props();
 
@@ -21,6 +23,7 @@
 
 	const linkedJustNow = $derived($page.url.searchParams.get('linked') === 'lichess');
 	const linkError = $derived($page.url.searchParams.get('error'));
+	const mapsConfigured = $derived(Boolean(data.googleMapsApiKey));
 
 	/** @param {number} minutes */
 	function formatClockTime(minutes) {
@@ -103,9 +106,11 @@
 		modality === 'lichess' && (!data.lichessConfigured || !data.canCreateLichessArena)
 	);
 
+	const otbMapsBlocked = $derived(modality === 'otb' && !mapsConfigured);
+
 	const lichessBlockReason = $derived(
 		!data.lichessConfigured
-			? 'Lichess OAuth is not configured on this server (`LICHESS_CLIENT_ID`).'
+			? 'Lichess Arenas aren’t available right now. Contact the site admin.'
 			: !data.canCreateLichessArena
 				? data.lichessUsername
 					? 'Reconnect your Lichess account so ChessHub can create the Arena.'
@@ -167,8 +172,32 @@
 			return;
 		}
 
+		if (otbMapsBlocked) {
+			event.preventDefault();
+			clientMessage = 'Venue maps aren’t available right now. Contact the site admin.';
+			missingLabels = ['Venue pin'];
+			invalidNames = new Set(['venue', 'latitude', 'longitude']);
+			scrollToElement(document.getElementById('venue-picker'));
+			return;
+		}
+
 		const form = formEl ?? /** @type {HTMLFormElement | null} */ (event.currentTarget);
 		if (!(form instanceof HTMLFormElement)) return;
+
+		if (modality === 'otb') {
+			const lat = form.querySelector('input[name="latitude"]');
+			const lng = form.querySelector('input[name="longitude"]');
+			const latVal = lat instanceof HTMLInputElement ? lat.value.trim() : '';
+			const lngVal = lng instanceof HTMLInputElement ? lng.value.trim() : '';
+			if (!latVal || !lngVal || !Number.isFinite(Number(latVal)) || !Number.isFinite(Number(lngVal))) {
+				event.preventDefault();
+				clientMessage = 'Pin the venue on the map so players can find the location.';
+				missingLabels = ['Venue pin'];
+				invalidNames = new Set(['venue', 'latitude', 'longitude']);
+				scrollToElement(document.getElementById('venue-picker'));
+				return;
+			}
+		}
 
 		if (!form.checkValidity()) {
 			event.preventDefault();
@@ -261,9 +290,7 @@
 					/>
 					<span class="modality-title">Lichess</span>
 					<span class="modality-desc">
-						Create a private rated Arena on Lichess from ChessHub. Players register here, then join
-						through ChessHub — entry uses a server-side password plus a Lichess allow list of registered
-						players, so sharing the password outside ChessHub is not enough to join.
+						Create a private rated Arena on Lichess. Players register and join from ChessHub.
 					</span>
 				</label>
 				<label class="modality-card" class:active={modality === 'otb'}>
@@ -277,9 +304,9 @@
 							clearClientValidation();
 						}}
 					/>
-					<span class="modality-title">OTB local</span>
+					<span class="modality-title">OTB</span>
 					<span class="modality-desc">
-						In-person club or venue event. Players find it by city and date.
+						Club or venue event. Pin the location on the map so players can find it.
 					</span>
 				</label>
 			</div>
@@ -294,7 +321,7 @@
 			>
 				{#if !data.lichessConfigured}
 					<p class="alert alert-error">
-						Lichess OAuth is not configured on this server (`LICHESS_CLIENT_ID`).
+						Lichess Arenas aren’t available right now. Contact the site admin.
 					</p>
 				{:else if !data.canCreateLichessArena}
 					<div class="lichess-cta">
@@ -517,32 +544,80 @@
 		</label>
 
 		{#if modality === 'otb'}
+			{#if !mapsConfigured}
+				<p class="alert alert-error" id="venue-picker">
+					Venue maps aren’t available right now. Contact the site admin before posting an OTB
+					event.
+				</p>
+			{:else}
+				<section class="venue-section stack-sm">
+					<h2 class="section-title">Venue pin <span class="req" aria-hidden="true">*</span></h2>
+					<p class="field-hint venue-lede">
+						Players need the exact venue on the map before you can post.
+					</p>
+					<VenueMapPicker
+						apiKey={data.googleMapsApiKey}
+						invalid={invalidNames.has('venue') ||
+							invalidNames.has('latitude') ||
+							invalidNames.has('longitude')}
+						value={{
+							venue: typeof form?.venue === 'string' ? form.venue : '',
+							city: typeof form?.city === 'string' ? form.city : '',
+							state: typeof form?.state === 'string' ? form.state : '',
+							country: typeof form?.country === 'string' ? form.country : '',
+							latitude:
+								typeof form?.latitude === 'string' && form.latitude
+									? Number(form.latitude)
+									: null,
+							longitude:
+								typeof form?.longitude === 'string' && form.longitude
+									? Number(form.longitude)
+									: null
+						}}
+					/>
+				</section>
+			{/if}
+
 			<div class="grid-2">
-				<label class="field">
-					Venue
-					<input type="text" name="venue" value={form?.venue ?? ''} />
-				</label>
-				<label class="field">
-					City
-					<input type="text" name="city" value={form?.city ?? ''} />
-				</label>
-				<label class="field">
-					State / region
-					<input type="text" name="state" value={form?.state ?? ''} />
-				</label>
-				<label class="field">
-					Country (ISO)
+				<label class="field" class:field-invalid={invalidNames.has('clockTime')}>
+					Clock (minutes) <span class="req" aria-hidden="true">*</span>
 					<input
-						type="text"
-						name="country"
-						maxlength="2"
-						placeholder="PH"
-						class="uppercase"
-						value={form?.country ?? ''}
+						type="number"
+						name="clockTime"
+						min="0"
+						step="0.5"
+						required
+						aria-invalid={invalidNames.has('clockTime')}
+						value={form?.clockTime ?? '90'}
+					/>
+				</label>
+				<label class="field" class:field-invalid={invalidNames.has('clockIncrement')}>
+					Increment (seconds)
+					<input
+						type="number"
+						name="clockIncrement"
+						min="0"
+						step="1"
+						aria-invalid={invalidNames.has('clockIncrement')}
+						value={form?.clockIncrement ?? '30'}
+					/>
+				</label>
+				<label class="field" class:field-invalid={invalidNames.has('clockDelay')}>
+					Delay (seconds)
+					<input
+						type="number"
+						name="clockDelay"
+						min="0"
+						step="1"
+						aria-invalid={invalidNames.has('clockDelay')}
+						value={form?.clockDelay ?? '0'}
 					/>
 				</label>
 			</div>
-			<p class="field-hint">Provide at least a venue or city so players can find the event.</p>
+			<p class="field-hint">
+				Use increment (Fischer) and/or delay (Bronstein/simple). ChessHub classifies Blitz, Rapid, or
+				Standard from the full clock.
+			</p>
 		{/if}
 
 		<div class="grid-2">
@@ -654,6 +729,8 @@
 				</p>
 			{/if}
 		</section>
+
+		<SponsorListEditor invalid={invalidNames.has('sponsorName') || invalidNames.has('sponsorUrl')} />
 
 		<label class="check">
 			<input
@@ -862,6 +939,14 @@
 	.prizes-optional {
 		padding-top: $space-2;
 		border-top: $border-width solid color-mix(in srgb, $color-border 70%, transparent);
+	}
+
+	.venue-section {
+		padding-top: $space-2;
+	}
+
+	.venue-lede {
+		margin: 0;
 	}
 
 	.tiers {

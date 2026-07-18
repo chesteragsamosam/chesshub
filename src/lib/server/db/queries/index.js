@@ -1,4 +1,4 @@
-import { and, eq, gte, lte, desc, asc, sql, like, or, inArray, not, isNull } from 'drizzle-orm';
+import { and, eq, gte, lte, lt, desc, asc, sql, like, or, inArray, not, isNull } from 'drizzle-orm';
 import { db } from '$lib/server/db';
 import {
 	profile,
@@ -6,24 +6,39 @@ import {
 	socialLink,
 	tournament,
 	tournamentPrize,
+	tournamentSponsor,
 	tournamentAward,
 	prizeClaim,
 	tournamentRegistration,
 	organizerRequest,
 	userFollow,
-	user
+	user,
+	account,
+	facebookDataDeletionRequest
 } from '$lib/server/db/schema';
 import { createId } from '$lib/server/id';
 
+import { resolveTournamentTimeControl } from '$lib/time-control';
+
 /**
- * Strip server-only Arena password before sending a tournament to the client.
+ * Strip server-only Arena password / settings before sending a tournament to the client.
+ * Attaches a public time-control summary when clock data is available.
  * @template {Record<string, unknown>} T
  * @param {T | null | undefined} row
  */
 export function toPublicTournament(row) {
 	if (!row) return null;
-	const { lichessArenaPassword: _secret, lichessArenaSettings: _settings, ...publicRow } = row;
-	return publicRow;
+	const {
+		lichessArenaPassword: _secret,
+		lichessArenaSettings: settingsRaw,
+		...publicRow
+	} = row;
+	const timeControl = resolveTournamentTimeControl({
+		...publicRow,
+		lichessArenaSettings:
+			typeof settingsRaw === 'string' ? settingsRaw : null
+	});
+	return { ...publicRow, timeControl };
 }
 
 /**
@@ -101,12 +116,24 @@ export async function unlinkChessAccount(userId, platform) {
  *   username: string,
  *   externalId?: string | null,
  *   displayName?: string | null,
+ *   federation?: string | null,
+ *   title?: string | null,
+ *   rating?: number | null,
+ *   ratings?: Record<string, number | null> | null,
  *   verified?: boolean,
  *   accessToken?: string | null
  * }} data
  */
 export async function upsertChessAccount(userId, platform, data) {
 	const existing = await getChessAccount(userId, platform);
+	const ratingsPayload =
+		data.ratings !== undefined
+			? {
+					rating: data.rating ?? null,
+					ratingsJson: data.ratings ? JSON.stringify(data.ratings) : null,
+					ratingsUpdatedAt: new Date()
+				}
+			: {};
 
 	if (existing) {
 		await db
@@ -115,9 +142,12 @@ export async function upsertChessAccount(userId, platform, data) {
 				username: data.username,
 				externalId: data.externalId ?? null,
 				displayName: data.displayName ?? null,
+				federation: data.federation ?? null,
+				title: data.title ?? null,
 				verified: data.verified ?? false,
 				accessToken: data.accessToken ?? null,
-				linkedAt: new Date()
+				linkedAt: new Date(),
+				...ratingsPayload
 			})
 			.where(eq(chessAccount.id, existing.id));
 		return getChessAccount(userId, platform);
@@ -131,10 +161,102 @@ export async function upsertChessAccount(userId, platform, data) {
 		username: data.username,
 		externalId: data.externalId ?? null,
 		displayName: data.displayName ?? null,
+		federation: data.federation ?? null,
+		title: data.title ?? null,
 		verified: data.verified ?? false,
-		accessToken: data.accessToken ?? null
+		accessToken: data.accessToken ?? null,
+		...ratingsPayload
 	});
 	return getChessAccount(userId, platform);
+}
+
+/**
+ * Persist a fresh ratings snapshot for a linked chess account.
+ * @param {string} accountId
+ * @param {{
+ *   rating?: number | null,
+ *   ratings?: Record<string, number | null> | null,
+ *   displayName?: string | null,
+ *   federation?: string | null,
+ *   title?: string | null
+ * }} data
+ */
+export async function updateChessAccountRatings(accountId, data) {
+	await db
+		.update(chessAccount)
+		.set({
+			rating: data.rating ?? null,
+			ratingsJson: data.ratings ? JSON.stringify(data.ratings) : null,
+			ratingsUpdatedAt: new Date(),
+			...(data.displayName !== undefined ? { displayName: data.displayName } : {}),
+			...(data.federation !== undefined ? { federation: data.federation } : {}),
+			...(data.title !== undefined ? { title: data.title } : {})
+		})
+		.where(eq(chessAccount.id, accountId));
+}
+
+/**
+ * Chess accounts whose ratings cache is missing or past platform TTL.
+ * @param {{
+ *   platform?: 'lichess' | 'chesscom' | 'fide',
+ *   limit?: number
+ * }} [opts]
+ */
+export async function listStaleChessAccounts(opts = {}) {
+	const limit = Math.min(Math.max(opts.limit ?? 100, 1), 500);
+	const now = Date.now();
+	const dayAgo = new Date(now - 24 * 60 * 60 * 1000);
+	const monthAgo = new Date(now - 30 * 24 * 60 * 60 * 1000);
+
+	/** @type {import('drizzle-orm').SQL[]} */
+	const platformStale = [
+		and(
+			eq(chessAccount.platform, 'lichess'),
+			or(isNull(chessAccount.ratingsUpdatedAt), lt(chessAccount.ratingsUpdatedAt, dayAgo))
+		),
+		and(
+			eq(chessAccount.platform, 'chesscom'),
+			or(isNull(chessAccount.ratingsUpdatedAt), lt(chessAccount.ratingsUpdatedAt, dayAgo))
+		),
+		and(
+			eq(chessAccount.platform, 'fide'),
+			or(isNull(chessAccount.ratingsUpdatedAt), lt(chessAccount.ratingsUpdatedAt, monthAgo))
+		)
+	];
+
+	const staleCondition = opts.platform
+		? and(
+				eq(chessAccount.platform, opts.platform),
+				or(
+					isNull(chessAccount.ratingsUpdatedAt),
+					lt(
+						chessAccount.ratingsUpdatedAt,
+						opts.platform === 'fide' ? monthAgo : dayAgo
+					)
+				)
+			)
+		: or(...platformStale);
+
+	return db
+		.select({
+			id: chessAccount.id,
+			userId: chessAccount.userId,
+			platform: chessAccount.platform,
+			username: chessAccount.username,
+			externalId: chessAccount.externalId,
+			displayName: chessAccount.displayName,
+			federation: chessAccount.federation,
+			title: chessAccount.title,
+			rating: chessAccount.rating,
+			ratingsJson: chessAccount.ratingsJson,
+			ratingsUpdatedAt: chessAccount.ratingsUpdatedAt,
+			verified: chessAccount.verified,
+			linkedAt: chessAccount.linkedAt
+		})
+		.from(chessAccount)
+		.where(staleCondition)
+		.orderBy(asc(chessAccount.ratingsUpdatedAt), asc(chessAccount.linkedAt))
+		.limit(limit);
 }
 
 /**
@@ -238,13 +360,14 @@ export async function isUsernameTaken(username, excludeUserId) {
 }
 
 /**
- * @param {{ q?: string, city?: string, country?: string }} filters
+ * @param {{ q?: string, city?: string, country?: string, fideFed?: string }} filters
  */
 export async function searchPlayers(filters) {
 	const trimmed = filters.q?.trim() ?? '';
 	const city = filters.city?.trim() ?? '';
 	const country = filters.country?.trim().toUpperCase() ?? '';
-	const hasFilters = trimmed.length >= 2 || city || country;
+	const fideFed = filters.fideFed?.trim().toUpperCase() ?? '';
+	const hasFilters = trimmed.length >= 2 || city || country || fideFed;
 
 	const playerFields = {
 		id: user.id,
@@ -282,6 +405,14 @@ export async function searchPlayers(filters) {
 		if (country) {
 			conditions.push(eq(profile.country, country));
 		}
+		if (fideFed) {
+			conditions.push(
+				and(
+					eq(chessAccount.platform, 'fide'),
+					or(eq(chessAccount.federation, fideFed), isNull(chessAccount.federation))
+				)
+			);
+		}
 
 		rows = await db
 			.selectDistinct(playerFields)
@@ -296,9 +427,19 @@ export async function searchPlayers(filters) {
 	const ids = rows.map((row) => row.id);
 	const accounts = await db
 		.select({
+			id: chessAccount.id,
 			userId: chessAccount.userId,
 			platform: chessAccount.platform,
-			username: chessAccount.username
+			username: chessAccount.username,
+			externalId: chessAccount.externalId,
+			displayName: chessAccount.displayName,
+			federation: chessAccount.federation,
+			title: chessAccount.title,
+			rating: chessAccount.rating,
+			ratingsJson: chessAccount.ratingsJson,
+			ratingsUpdatedAt: chessAccount.ratingsUpdatedAt,
+			verified: chessAccount.verified,
+			linkedAt: chessAccount.linkedAt
 		})
 		.from(chessAccount)
 		.where(inArray(chessAccount.userId, ids));
@@ -577,7 +718,16 @@ export async function searchTournaments(filters) {
 		conditions.push(eq(tournament.country, filters.country));
 	}
 	if (filters.from) {
-		conditions.push(gte(tournament.startDate, filters.from));
+		// Include upcoming starts and events still running on/after `from`.
+		conditions.push(
+			or(
+				gte(tournament.startDate, filters.from),
+				and(
+					lte(tournament.startDate, filters.from),
+					or(isNull(tournament.endDate), gte(tournament.endDate, filters.from))
+				)
+			)
+		);
 	}
 	if (filters.to) {
 		conditions.push(lte(tournament.startDate, filters.to));
@@ -726,6 +876,40 @@ export async function replaceTournamentPrizes(tournamentId, prizes) {
 					placement: prize.placement,
 					label: prize.label,
 					amountCents: prize.amountCents
+				}))
+			);
+		}
+		return true;
+	});
+}
+
+/**
+ * @param {string} tournamentId
+ */
+export async function listTournamentSponsors(tournamentId) {
+	return db
+		.select()
+		.from(tournamentSponsor)
+		.where(eq(tournamentSponsor.tournamentId, tournamentId))
+		.orderBy(asc(tournamentSponsor.sortOrder), asc(tournamentSponsor.name));
+}
+
+/**
+ * Replace the full sponsor list for a tournament.
+ * @param {string} tournamentId
+ * @param {Array<{ name: string, url?: string | null, sortOrder?: number }>} sponsors
+ */
+export async function replaceTournamentSponsors(tournamentId, sponsors) {
+	return db.transaction(async (tx) => {
+		await tx.delete(tournamentSponsor).where(eq(tournamentSponsor.tournamentId, tournamentId));
+		if (sponsors.length > 0) {
+			await tx.insert(tournamentSponsor).values(
+				sponsors.map((sponsor, index) => ({
+					id: createId(),
+					tournamentId,
+					name: sponsor.name,
+					url: sponsor.url || null,
+					sortOrder: sponsor.sortOrder ?? index
 				}))
 			);
 		}
@@ -1154,6 +1338,70 @@ export async function reviewOrganizerRequest(requestId, status, adminId) {
 	}
 
 	return request;
+}
+
+/**
+ * Remove Facebook OAuth credentials and Facebook social link for an app-scoped Facebook user id.
+ * @param {string} facebookUserId
+ * @returns {Promise<{ found: boolean, userId: string | null }>}
+ */
+export async function deleteFacebookAssociatedData(facebookUserId) {
+	const [fbAccount] = await db
+		.select()
+		.from(account)
+		.where(and(eq(account.providerId, 'facebook'), eq(account.accountId, facebookUserId)))
+		.limit(1);
+
+	if (!fbAccount) {
+		return { found: false, userId: null };
+	}
+
+	await db.delete(account).where(eq(account.id, fbAccount.id));
+	await unlinkSocialLink(fbAccount.userId, 'facebook');
+
+	return { found: true, userId: fbAccount.userId };
+}
+
+/**
+ * @param {{
+ *   confirmationCode: string
+ *   facebookUserId: string
+ *   chessHubUserId?: string | null
+ *   status: 'received' | 'completed' | 'not_found' | 'failed'
+ *   details?: string | null
+ * }} data
+ */
+export async function createFacebookDataDeletionRequest(data) {
+	const id = createId();
+	const completedAt =
+		data.status === 'completed' || data.status === 'not_found' ? new Date() : null;
+	await db.insert(facebookDataDeletionRequest).values({
+		id,
+		confirmationCode: data.confirmationCode,
+		facebookUserId: data.facebookUserId,
+		chessHubUserId: data.chessHubUserId ?? null,
+		status: data.status,
+		details: data.details ?? null,
+		completedAt
+	});
+	const [row] = await db
+		.select()
+		.from(facebookDataDeletionRequest)
+		.where(eq(facebookDataDeletionRequest.id, id))
+		.limit(1);
+	return row ?? null;
+}
+
+/**
+ * @param {string} confirmationCode
+ */
+export async function getFacebookDataDeletionRequestByCode(confirmationCode) {
+	const [row] = await db
+		.select()
+		.from(facebookDataDeletionRequest)
+		.where(eq(facebookDataDeletionRequest.confirmationCode, confirmationCode))
+		.limit(1);
+	return row ?? null;
 }
 
 /**

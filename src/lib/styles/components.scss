@@ -59,6 +59,53 @@
 	color: $color-text-muted;
 }
 
+// Override @tailwindcss/forms' fixed light (#fff) fills so inputs follow data-theme.
+input:where(
+		[type='text'],
+		[type='email'],
+		[type='url'],
+		[type='password'],
+		[type='number'],
+		[type='date'],
+		[type='datetime-local'],
+		[type='month'],
+		[type='search'],
+		[type='tel'],
+		[type='time'],
+		[type='week'],
+		:not([type])
+	),
+textarea,
+select {
+	color: $color-text;
+	background-color: color-mix(in srgb, $color-bg 45%, $color-surface);
+	border-color: $color-border;
+
+	&::placeholder {
+		color: $color-text-muted;
+		opacity: 1;
+	}
+}
+
+input:where([type='file']) {
+	color: $color-text;
+	background-color: transparent;
+	border-color: $color-border;
+
+	&::file-selector-button {
+		margin-inline-end: $space-3;
+		padding: $space-2 $space-3;
+		border: $border-width solid $color-border;
+		border-radius: $radius-md;
+		color: $color-text;
+		background: color-mix(in srgb, $color-surface 80%, $color-bg);
+		font: inherit;
+		font-size: $font-size-sm;
+		font-weight: $font-weight-semibold;
+		cursor: pointer;
+	}
+}
+
 .field {
 	display: block;
 	font-size: $font-size-sm;
@@ -74,7 +121,7 @@
 		font: inherit;
 		font-weight: $font-weight-normal;
 		color: $color-text;
-		background: color-mix(in srgb, $color-bg 70%, $color-surface);
+		background-color: color-mix(in srgb, $color-bg 45%, $color-surface);
 		border: $border-width solid $color-border;
 		border-radius: $radius-md;
 		transition:

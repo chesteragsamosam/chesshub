@@ -28,13 +28,14 @@ Local mirror of the spec: `Lichessorg API reference.json` at the repo root. Pref
 
 ## Integration routing
 
-ChessHub **app login** is Better Auth (email/password, Google, Meta) — not Lichess. Lichess OAuth here only **links a chess profile** for an already-signed-in ChessHub user.
+ChessHub **app login** is Better Auth (email/password, Google) — not Lichess. Lichess OAuth here only **links a chess profile** for an already-signed-in ChessHub user.
 
 | Building… | Use | Details |
 | --- | --- | --- |
 | Link Lichess chess account (after ChessHub login) | OAuth2 Authorization Code + **PKCE S256** | [references/auth.md](references/auth.md) |
 | Quick server scripts (no user login) | Personal access token (`Authorization: Bearer …`) | [references/auth.md](references/auth.md) |
 | Public user ratings / profile | `GET /api/user/{username}` | [references/users-games.md](references/users-games.md) |
+| FIDE player by ID (ChessHub FIDE link) | `GET /api/fide/player/{playerId}` | [references/users-games.md](references/users-games.md) |
 | Logged-in profile | `GET /api/account` | [references/auth.md](references/auth.md) |
 | Arena create / info / results | `/api/tournament…` | [references/tournaments.md](references/tournaments.md) |
 | Swiss create / info / results | `/api/swiss…` | [references/tournaments.md](references/tournaments.md) |

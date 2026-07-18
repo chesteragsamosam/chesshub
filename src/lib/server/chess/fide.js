@@ -1,98 +1,77 @@
 import { primaryRating } from '$lib/chess-ratings';
 
 /**
- * Look up a FIDE player by ID.
- * Uses ratings.fide.com HTML as a pragmatic MVP (no official public REST API).
+ * Look up a FIDE player by ID via Lichess's FIDE mirror
+ * (`GET /api/fide/player/{playerId}`).
  * @param {string} fideId
  */
 export async function lookupFidePlayer(fideId) {
 	const cleaned = fideId.trim();
 	if (!/^\d{5,10}$/.test(cleaned)) {
-		return { ok: false, error: 'FIDE ID must be 5–10 digits' };
+		return { ok: false, error: 'Enter your FIDE ID (5–10 digits)' };
 	}
 
 	try {
-		const res = await fetch(`https://ratings.fide.com/profile/${cleaned}`, {
+		const res = await fetch(`https://lichess.org/api/fide/player/${cleaned}`, {
 			headers: {
-				'User-Agent': 'ChessHub/1.0 (tournament platform)',
-				Accept: 'text/html'
+				Accept: 'application/json',
+				'User-Agent': 'ChessHub/1.0 (tournament platform)'
 			}
 		});
 
 		if (res.status === 404) {
-			return { ok: false, error: 'FIDE player not found' };
+			return { ok: false, error: 'We couldn’t find that FIDE ID. Check the number and try again.' };
 		}
 
 		if (!res.ok) {
-			return { ok: false, error: 'Unable to look up FIDE ID right now' };
+			return { ok: false, error: 'We couldn’t look up that FIDE profile right now. Try again later.' };
 		}
 
-		const html = await res.text();
+		const data =
+			/** @type {{
+			 *   id: number,
+			 *   name: string,
+			 *   federation: string,
+			 *   title?: string,
+			 *   standard?: number,
+			 *   rapid?: number,
+			 *   blitz?: number
+			 * }} */ (await res.json());
 
-		if (html.includes('Player not found') || html.includes('No player found')) {
-			return { ok: false, error: 'FIDE player not found' };
+		if (!data?.id || !data?.name) {
+			return { ok: false, error: 'We couldn’t find that FIDE ID. Check the number and try again.' };
 		}
 
-		const nameMatch =
-			html.match(/<title>\s*([^|<]+)/i) ||
-			html.match(/profile_header_name[^>]*>([^<]+)/i) ||
-			html.match(/class="player-title"[^>]*>[\s\S]*?<[^>]+>([^<]+)/i);
+		const ratings = {
+			standard: ratingOrNull(data.standard),
+			rapid: ratingOrNull(data.rapid),
+			blitz: ratingOrNull(data.blitz)
+		};
 
-		let displayName = nameMatch?.[1]?.trim() ?? null;
-		if (displayName) {
-			displayName = displayName.replace(/\s*-\s*FIDE.*/i, '').trim();
-		}
-
-		const ratings = parseFideRatings(html);
+		const title = typeof data.title === 'string' && data.title.trim() ? data.title.trim() : null;
+		const displayName = title ? `${title} ${data.name}` : data.name;
 
 		return {
 			ok: true,
-			username: cleaned,
-			externalId: cleaned,
-			displayName: displayName || `FIDE ${cleaned}`,
+			username: String(data.id),
+			externalId: String(data.id),
+			displayName,
+			federation: data.federation?.toUpperCase?.() ?? data.federation ?? null,
+			title,
 			rating: primaryRating('fide', ratings),
 			ratings
 		};
 	} catch {
-		return { ok: false, error: 'Unable to look up FIDE ID right now' };
+		return { ok: false, error: 'We couldn’t look up that FIDE profile right now. Try again later.' };
 	}
 }
 
 /**
- * @param {string} html
- * @returns {Record<string, number | null>}
+ * @param {unknown} value
+ * @returns {number | null}
  */
-export function parseFideRatings(html) {
-	/** @param {RegExp[]} patterns */
-	function firstMatch(patterns) {
-		for (const pattern of patterns) {
-			const match = html.match(pattern);
-			if (match?.[1]) {
-				const value = Number(match[1]);
-				if (Number.isFinite(value) && value >= 100 && value <= 4000) return value;
-			}
-		}
-		return null;
-	}
-
-	const standard = firstMatch([
-		/std[_\s]?rating[^>]*>[\s\S]*?(\d{3,4})/i,
-		/Standard\s*<\/[^>]*>[\s\S]*?(\d{3,4})/i,
-		/"std"\s*:\s*(\d{3,4})/,
-		/profile-top-rating[^>]*>[\s\S]*?(\d{3,4})/i
-	]);
-
-	const rapid = firstMatch([
-		/rapid[_\s]?rating[^>]*>[\s\S]*?(\d{3,4})/i,
-		/Rapid\s*<\/[^>]*>[\s\S]*?(\d{3,4})/i,
-		/"rapid"\s*:\s*(\d{3,4})/
-	]);
-
-	const blitz = firstMatch([
-		/blitz[_\s]?rating[^>]*>[\s\S]*?(\d{3,4})/i,
-		/Blitz\s*<\/[^>]*>[\s\S]*?(\d{3,4})/i,
-		/"blitz"\s*:\s*(\d{3,4})/
-	]);
-
-	return { standard, rapid, blitz };
+function ratingOrNull(value) {
+	if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+	if (value < 100 || value > 4000) return null;
+	return value;
 }

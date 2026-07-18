@@ -1,6 +1,7 @@
 <script>
 	import { resolve } from '$app/paths';
 	import { page } from '$app/stores';
+	import { modalityLabel } from '$lib/time-control';
 
 	let { data } = $props();
 
@@ -11,11 +12,6 @@
 			style: 'currency',
 			currency: (currency || 'php').toUpperCase()
 		}).format(cents / 100);
-	}
-
-	/** @param {'lichess' | 'otb' | string | null | undefined} modality */
-	function modalityLabel(modality) {
-		return modality === 'otb' ? 'OTB local' : 'Lichess';
 	}
 </script>
 
@@ -35,8 +31,7 @@
 		<section class="panel">
 			<h2 class="section-title">Payments</h2>
 			<p class="page-lede">
-				PayMongo is not configured on this server. Paid tournaments cannot be published until
-				<code>PAYMONGO_SECRET_KEY</code> is set.
+				Paid registrations aren’t available yet. Contact the site admin to enable payments.
 			</p>
 		</section>
 	{/if}
@@ -47,7 +42,7 @@
 			<select name="modality">
 				<option value="" selected={data.filters.modality === ''}>All</option>
 				<option value="lichess" selected={data.filters.modality === 'lichess'}>Lichess</option>
-				<option value="otb" selected={data.filters.modality === 'otb'}>OTB local</option>
+				<option value="otb" selected={data.filters.modality === 'otb'}>OTB</option>
 			</select>
 		</label>
 		<label class="field">
@@ -85,6 +80,9 @@
 						</a>
 						<p class="meta">
 							<span class="modality">{modalityLabel(tournament.modality)}</span>
+							{#if tournament.timeControl}
+								· <span>{tournament.timeControl.label} {tournament.timeControl.clock}</span>
+							{/if}
 							· <span class="capitalize">{tournament.status}</span>
 							· {formatFee(tournament.entryFeeCents, tournament.currency)}
 							· {new Date(tournament.startDate).toLocaleDateString()}

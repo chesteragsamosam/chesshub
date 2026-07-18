@@ -1,6 +1,7 @@
 <script>
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
+	import AuthShell from '$lib/components/AuthShell.svelte';
 	import SocialLoginButtons from '$lib/components/SocialLoginButtons.svelte';
 
 	let { data, form } = $props();
@@ -8,96 +9,114 @@
 	const emailFormError = $derived(form?.email !== undefined ? (form.message ?? null) : null);
 	const socialError = $derived(
 		data.oauthError
-			? 'Social sign-in failed. Please try again.'
+			? 'Sign-in failed. Please try again.'
 			: form?.email === undefined
 				? (form?.message ?? null)
 				: null
 	);
-	const hasSocial = $derived(data.socialProviders.google || data.socialProviders.facebook);
+	const hasSocial = $derived(data.socialProviders.google);
+
+	let showPassword = $state(false);
 </script>
 
-<div class="page-narrow stack">
-	<header>
-		<h1 class="page-title">Create account</h1>
-		<p class="page-lede">Join ChessHub to link profiles and find tournaments.</p>
-	</header>
+<AuthShell title="Create account" lede="Join to connect your chess accounts and find tournaments near you.">
+	<div class="auth-body">
+		<SocialLoginButtons
+			providers={data.socialProviders}
+			errorMessage={socialError}
+			errorPath="/register"
+		/>
 
-	<SocialLoginButtons
-		providers={data.socialProviders}
-		errorMessage={socialError}
-		errorPath="/register"
-	/>
+		{#if hasSocial}
+			<div class="divider" role="separator">
+				<span>or</span>
+			</div>
+		{/if}
 
-	<details class="email-accordion" open={!hasSocial || Boolean(emailFormError)}>
-		<summary>Sign up with email</summary>
-		<form method="post" use:enhance class="form">
+		<form method="post" action="?/email" use:enhance class="form">
 			<label class="field">
 				Email
-				<input type="email" name="email" value={form?.email ?? ''} required />
+				<input
+					type="email"
+					name="email"
+					value={form?.email ?? ''}
+					required
+					autocomplete="email"
+					placeholder="you@example.com"
+				/>
 			</label>
-			<label class="field">
-				Password
-				<input type="password" name="password" required minlength="8" />
-			</label>
+			<div class="field">
+				<div class="field-row">
+					<label for="register-password">Password</label>
+					<button
+						type="button"
+						class="toggle-visibility"
+						aria-controls="register-password"
+						onclick={() => (showPassword = !showPassword)}
+					>
+						{showPassword ? 'Hide' : 'Show'}
+					</button>
+				</div>
+				<input
+					id="register-password"
+					type={showPassword ? 'text' : 'password'}
+					name="password"
+					required
+					minlength="8"
+					autocomplete="new-password"
+					placeholder="At least 8 characters"
+				/>
+			</div>
+			<p class="hint">At least 8 characters.</p>
 			{#if emailFormError}
 				<p class="alert alert-error">{emailFormError}</p>
 			{/if}
-			<button type="submit" class="btn btn-secondary btn-block">Create account</button>
+			<button type="submit" class="btn btn-primary btn-block">Create account</button>
 		</form>
-	</details>
+	</div>
 
-	<p class="footer">
-		Already have an account?
-		<a href={resolve('/login')} class="link">Sign in</a>
-	</p>
-</div>
+	{#snippet footer()}
+		<p>
+			Already have an account?
+			<a href={resolve('/login')} class="link">Sign in</a>
+		</p>
+		<p class="legal">
+			By creating an account you agree to our
+			<a href={resolve('/privacy')} class="link">Privacy Policy</a>.
+		</p>
+	{/snippet}
+</AuthShell>
 
 <style lang="scss">
 	@use 'lib/styles/variables' as *;
 
-	.stack {
+	.auth-body {
 		display: flex;
 		flex-direction: column;
-		gap: $space-6;
+		gap: $space-5;
 	}
 
-	.email-accordion {
-		border-top: $border-width solid $color-border;
-		padding-top: $space-4;
+	.legal {
+		font-size: $font-size-xs;
+		color: $color-text-muted;
+	}
 
-		summary {
-			cursor: pointer;
-			list-style: none;
-			font-size: $font-size-sm;
-			font-weight: $font-weight-semibold;
-			color: $color-text-muted;
-			user-select: none;
+	.divider {
+		display: flex;
+		align-items: center;
+		gap: $space-3;
+		color: $color-text-muted;
+		font-size: $font-size-xs;
+		font-weight: $font-weight-semibold;
+		letter-spacing: $letter-spacing-wide;
+		text-transform: uppercase;
 
-			&::-webkit-details-marker {
-				display: none;
-			}
-
-			&::after {
-				content: '';
-				display: inline-block;
-				margin-left: $space-2;
-				border: solid currentColor;
-				border-width: 0 1.5px 1.5px 0;
-				padding: 2.5px;
-				transform: rotate(45deg);
-				vertical-align: 0.15em;
-				transition: transform $duration-fast $ease-out;
-			}
-		}
-
-		&[open] summary {
-			margin-bottom: $space-4;
-			color: $color-text;
-
-			&::after {
-				transform: rotate(-135deg);
-				vertical-align: -0.05em;
-			}
+		&::before,
+		&::after {
+			content: '';
+			flex: 1;
+			height: $border-width;
+			background: $color-border;
 		}
 	}
 
@@ -107,9 +126,32 @@
 		gap: $space-4;
 	}
 
-	.footer {
-		margin: 0;
-		font-size: $font-size-sm;
+	.field-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: $space-2;
+	}
+
+	.toggle-visibility {
+		padding: 0;
+		border: none;
+		background: none;
+		font: inherit;
+		font-size: $font-size-xs;
+		font-weight: $font-weight-semibold;
+		color: $color-primary;
+		cursor: pointer;
+
+		&:hover {
+			text-decoration: underline;
+		}
+	}
+
+	.hint {
+		margin: calc(var(--spacing) * -2) 0 0;
+		font-size: $font-size-xs;
+		line-height: $line-height-relaxed;
 		color: $color-text-muted;
 	}
 </style>

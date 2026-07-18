@@ -19,8 +19,9 @@ Required:
 Optional:
 
 - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — Google login
-- `FACEBOOK_CLIENT_ID` / `FACEBOOK_CLIENT_SECRET` — Meta/Facebook login
+- `PUBLIC_GOOGLE_MAPS_API_KEY` — OTB venue pin (Maps JavaScript + Places + Geocoding)
 - `LICHESS_CLIENT_ID` — Lichess chess-account linking (PKCE; no secret)
+- `CHESSCOM_CLIENT_ID` / `CHESSCOM_CLIENT_SECRET` — Chess.com chess-account linking (PKCE; secret if Chess.com issued one)
 - `PAYMONGO_SECRET_KEY` / `PAYMONGO_WEBHOOK_SECRET` — paid tournament registration (GCash, QR Ph)
 
 2. Start MySQL and sync schema:
@@ -33,7 +34,15 @@ node --env-file=.env scripts/migrate-paymongo.mjs
 # If adding Lichess vs OTB modality on an existing DB:
 node --env-file=.env scripts/migrate-tournament-modality.mjs
 # If adding Facebook to social_link platforms on an existing DB:
-pnpm db:migrate-social-facebook
+node --env-file=.env scripts/migrate-social-facebook.mjs
+# If adding Facebook data-deletion request tracking:
+pnpm db:migrate-facebook-deletion
+# If adding FIDE federation/title columns on chess_account:
+pnpm db:migrate-chess-account-fide
+# If adding cached ratings columns on chess_account:
+pnpm db:migrate-chess-account-ratings
+# If adding optional tournament sponsors:
+pnpm db:migrate-tournament-sponsors
 ```
 
 3. Run the app:
@@ -41,6 +50,16 @@ pnpm db:migrate-social-facebook
 ```sh
 pnpm dev
 ```
+
+FIDE account linking uses Lichess’s public FIDE mirror (`GET /api/fide/player/{id}`), not HTML scraping. Philippine top-rated on `/players?fideFed=PHI` ranks ChessHub users with a linked FIDE account whose federation is `PHI`.
+
+Ratings are cached on `chess_account` and refreshed when stale: **Lichess / Chess.com daily**, **FIDE monthly**.
+
+- **Profiles / settings** — refresh on view if the cache is past TTL.
+- **`/players` leaderboards** — read the DB cache only (consistent snapshot).
+- **Cron** — `GET|POST /api/cron/refresh-ratings` with `Authorization: Bearer $CRON_SECRET` refreshes stale accounts sequentially (rate-limit friendly).
+
+On Vercel, [`vercel.json`](vercel.json) schedules that path daily at 04:00 UTC. Set `CRON_SECRET` in the project env. Elsewhere, point any scheduler (or `pnpm ratings:refresh` against a running `ORIGIN`) at the same endpoint.
 
 ## Authentication
 
@@ -50,28 +69,46 @@ ChessHub app login uses **Better Auth**:
 | --- | --- | --- |
 | Email + password | `BETTER_AUTH_SECRET` | Always available |
 | Google | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Shown on `/login` and `/register` when both are set |
-| Meta (Facebook) | `FACEBOOK_CLIENT_ID`, `FACEBOOK_CLIENT_SECRET` | Same UI; also auto-binds a Facebook URL on the user’s social links |
 
-OAuth redirect URIs (must match `ORIGIN`):
+OAuth redirect URI (must match `ORIGIN`):
 
 - Google: `{ORIGIN}/api/auth/callback/google`
-- Meta/Facebook: `{ORIGIN}/api/auth/callback/facebook`
+
+**Facebook Login is postponed** and not wired into Better Auth. Data-deletion routes remain for compliance if Meta login returns later.
 
 ### Google Cloud setup
 
 1. Create an OAuth 2.0 Client ID (Web application) in [Google Cloud Console](https://console.cloud.google.com/apis/credentials).
 2. Add the authorized redirect URI above.
-3. Copy Client ID and Client Secret into `.env`.
+3. Also add `{ORIGIN}` under **Authorized JavaScript origins** (for the official Google button).
+4. Copy Client ID and Client Secret into `.env`.
 
-### Meta / Facebook setup
+**Not the same as Lichess / Chess.com linking:** those OAuth flows only link a chess profile into `chess_account` after the user is already signed into ChessHub. They are not ChessHub app login.
 
-1. Create an app with **Facebook Login** in the [Meta Developer Portal](https://developers.facebook.com/apps).
-2. Add the Valid OAuth Redirect URI above (App → Facebook Login → Settings).
-3. Copy App ID → `FACEBOOK_CLIENT_ID` and App Secret → `FACEBOOK_CLIENT_SECRET`.
+### Chess.com OAuth setup
 
-Facebook sign-in upserts `social_link` with `https://www.facebook.com/{accountId}`. Users can still edit or clear that link under `/settings/profile`.
+1. Request Chess.com OAuth access via their [developer application form](https://www.chess.com/announcements/view/chess-com-oauth-login-application).
+2. In the Chess.com OAuth application, set redirect URI(s) to match `ORIGIN` (one per line, exact match, no wildcards):
 
-**Not the same as Lichess:** Lichess OAuth only links a chess profile into `chess_account` after the user is already signed into ChessHub. It is not ChessHub app login.
+   - Local: `http://localhost:5173/api/chess/chesscom/callback`
+   - Production: `https://your-domain/api/chess/chesscom/callback`
+   - Tunnel (if used): `https://your-tunnel/api/chess/chesscom/callback`
+
+3. Copy Client ID (and Client Secret if provided) into `.env` as `CHESSCOM_CLIENT_ID` / `CHESSCOM_CLIENT_SECRET`.
+
+## Google Maps (OTB venues)
+
+OTB tournaments require a pinned venue before organizers can create or publish them. Set `PUBLIC_GOOGLE_MAPS_API_KEY` (browser key).
+
+1. In [Google Cloud Console](https://console.cloud.google.com/google/maps-apis), create or pick a project.
+2. Enable **Maps JavaScript API**, **Places API**, and **Geocoding API**.
+3. Create an API key. Under Application restrictions, choose **HTTP referrers** and add:
+   - `http://localhost:5173/*` (local)
+   - `https://your-domain/*` (production)
+4. Optionally restrict the key to those three APIs only.
+5. Put the key in `.env` as `PUBLIC_GOOGLE_MAPS_API_KEY` (and in your host’s env for production).
+
+Billing must be enabled on the Google Cloud project (Maps has a monthly free credit). Without this key, organizers cannot post OTB events.
 
 ## Seed mock data (local dev)
 
@@ -108,6 +145,9 @@ UPDATE user SET role = 'admin' WHERE email = 'you@example.com';
 
 | Path                        | Purpose                                                      |
 | --------------------------- | ------------------------------------------------------------ |
+| `/privacy`                  | Privacy Policy                                               |
+| `/data-deletion`            | User data deletion instructions (Meta)                       |
+| `/data-deletion/status`     | Facebook deletion request status                             |
 | `/login`                    | Email/password + Google/Meta sign-in                         |
 | `/register`                 | Email/password + Google/Meta sign-up                         |
 | `/settings/profile`         | Link chess + social accounts, set username                   |
@@ -117,7 +157,9 @@ UPDATE user SET role = 'admin' WHERE email = 'you@example.com';
 | `/admin/organizer-requests` | Approve organizers                                           |
 | `/organizer`                | Create/manage tournaments                                    |
 | `/api/auth/*`               | Better Auth routes (sessions, OAuth callbacks)               |
+| `/api/facebook/data-deletion` | Meta data deletion callback                                |
 | `/api/chess/lichess/*`      | Lichess chess-account link (start/callback)                  |
+| `/api/chess/chesscom/*`     | Chess.com chess-account link (start/callback)                |
 | `/api/paymongo/webhook`     | PayMongo webhooks                                            |
 
 ## PayMongo (paid tournaments)

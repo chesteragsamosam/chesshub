@@ -10,7 +10,8 @@
 
 	let { data } = $props();
 
-	const shareUrl = $derived(`${$page.url.origin}/profile/${data.profileUser.slug}`);
+	const sharePath = $derived(`/profile/${data.profileUser.slug}`);
+	const shareUrl = $derived(`${$page.url.origin}${sharePath}`);
 	const locationLabel = $derived(
 		[data.profile?.city, data.profile?.country].filter(Boolean).join(', ')
 	);
@@ -99,7 +100,7 @@
 
 			{#if data.profileUser.username}
 				<div class="share">
-					<code>{shareUrl}</code>
+					<code>{sharePath}</code>
 					<button type="button" class="btn btn-secondary" onclick={copyLink}>
 						{copied ? 'Copied' : 'Copy link'}
 					</button>
@@ -138,7 +139,7 @@
 	<section class="stack-sm">
 		<header>
 			<h2 class="section-title">Chess ratings</h2>
-			<p class="page-lede">Live ratings from Lichess, Chess.com, and FIDE public profiles.</p>
+			<p class="page-lede">Ratings from Lichess, Chess.com, and FIDE.</p>
 		</header>
 
 		{#if data.chessAccounts.length}
@@ -152,13 +153,13 @@
 								<div class="name-row">
 									<h3>{platformLabel(account.platform)}</h3>
 									{#if account.verified}
-										<span class="badge badge-success">Verified</span>
+										<span class="badge badge-success">Confirmed</span>
 									{/if}
 								</div>
 								{#if href}
 									<a {href} target="_blank" rel="noopener noreferrer external" class="link handle">
 										{#if account.platform === 'fide'}
-											ID {account.username}
+											FIDE #{account.username}
 										{:else}
 											@{account.username}
 										{/if}
@@ -169,11 +170,15 @@
 								{#if account.displayName && account.displayName !== account.username}
 									<p class="muted">{account.displayName}</p>
 								{/if}
+								{#if account.platform === 'fide' && account.federation}
+									<p class="muted">{account.federation}{#if account.title}
+											· {account.title}{/if}</p>
+								{/if}
 							</div>
 							{#if account.rating}
 								<div class="primary-rating">
 									<p>{account.rating}</p>
-									<span>Primary</span>
+									<span>Main</span>
 								</div>
 							{/if}
 						</div>
@@ -188,13 +193,13 @@
 								{/each}
 							</dl>
 						{:else}
-							<p class="muted empty-ratings">No public ratings found yet.</p>
+							<p class="muted empty-ratings">No ratings found yet.</p>
 						{/if}
 					</article>
 				{/each}
 			</div>
 		{:else}
-			<p class="panel-dashed">No chess platforms linked yet.</p>
+			<p class="panel-dashed">No chess accounts linked yet.</p>
 		{/if}
 	</section>
 
@@ -367,7 +372,8 @@
 		code {
 			padding: $space-2 $space-3;
 			border-radius: $radius-md;
-			background: $color-bg;
+			background: color-mix(in srgb, $color-bg 55%, $color-surface);
+			border: $border-width solid $color-border;
 			font-size: $font-size-sm;
 			color: color-mix(in srgb, $color-text 85%, transparent);
 		}

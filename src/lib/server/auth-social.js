@@ -9,26 +9,23 @@ import { auth } from '$lib/server/auth';
  */
 export function getEnabledSocialProviders() {
 	const google = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
-	const facebook = Boolean(env.FACEBOOK_CLIENT_ID && env.FACEBOOK_CLIENT_SECRET);
 
 	return {
 		google,
-		facebook,
-		googleClientId: google ? env.GOOGLE_CLIENT_ID : null,
-		facebookAppId: facebook ? env.FACEBOOK_CLIENT_ID : null
+		googleClientId: google ? env.GOOGLE_CLIENT_ID : null
 	};
 }
 
 /**
  * Start a Better Auth social sign-in and redirect to the provider.
  * @param {import('@sveltejs/kit').RequestEvent} event
- * @param {'google' | 'facebook'} provider
+ * @param {'google'} provider
  * @param {{ errorPath?: string }} [opts]
  */
 export async function startSocialSignIn(event, provider, opts = {}) {
 	const enabled = getEnabledSocialProviders();
 	if (!enabled[provider]) {
-		return fail(400, { message: `${provider} login is not configured` });
+		return fail(400, { message: `${provider} sign-in isn’t available right now` });
 	}
 
 	const errorPath = opts.errorPath ?? '/login';
@@ -47,13 +44,13 @@ export async function startSocialSignIn(event, provider, opts = {}) {
 			redirect(302, result.url);
 		}
 
-		return fail(500, { message: 'Could not start social sign-in' });
+		return fail(500, { message: 'Could not start sign-in' });
 	} catch (error) {
 		if (isRedirect(error)) throw error;
 		if (error instanceof APIError) {
-			return fail(400, { message: error.message || 'Social sign-in failed' });
+			return fail(400, { message: error.message || 'Sign-in failed' });
 		}
 		console.error(`[auth] ${provider} sign-in failed`, error);
-		return fail(500, { message: 'Unexpected error starting social sign-in' });
+		return fail(500, { message: 'Something went wrong. Please try again.' });
 	}
 }

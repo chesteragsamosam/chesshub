@@ -15,6 +15,18 @@
 | GET | `/api/user/{username}/activity` | Activity |
 | GET | `/api/crosstable/{user1}/{user2}` | Head-to-head |
 
+## FIDE (via Lichess)
+
+Lichess mirrors the public FIDE rating lists. ChessHub FIDE account linking uses these — **not** HTML scraping of ratings.fide.com.
+
+| Method | Path | Notes |
+| --- | --- | --- |
+| GET | `/api/fide/player/{playerId}` | Player info: `name`, `federation`, `title`, `standard` / `rapid` / `blitz` |
+| GET | `/api/fide/player/{playerId}/ratings` | Historical encoded rating points |
+| GET | `/api/fide/player?q=` | Search by name |
+
+ChessHub: `lookupFidePlayer` in `src/lib/server/chess/fide.js`. Send `User-Agent` and serialize requests like other Lichess calls.
+
 ChessHub public ratings: `fetchLichessPublicRatings` → `GET /api/user/{username}`.
 
 ## Account (authenticated)

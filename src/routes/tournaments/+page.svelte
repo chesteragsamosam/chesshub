@@ -1,8 +1,21 @@
 <script>
 	import { resolve } from '$app/paths';
 	import { page } from '$app/stores';
+	import { modalityLabel } from '$lib/time-control';
 
 	let { data } = $props();
+
+	let endDateOpen = $state(false);
+	const showEndDate = $derived(Boolean(data.filters.to) || endDateOpen);
+
+	const hasExtraFilters = $derived(
+		Boolean(data.filters.modality) ||
+			Boolean(data.filters.city) ||
+			Boolean(data.filters.country) ||
+			Boolean(data.filters.to) ||
+			$page.url.searchParams.has('lat') ||
+			$page.url.searchParams.has('lng')
+	);
 
 	/** @param {number} cents @param {string} currency */
 	function formatFee(cents, currency) {
@@ -23,11 +36,6 @@
 		});
 	}
 
-	/** @param {'lichess' | 'otb' | string | null | undefined} modality */
-	function modalityLabel(modality) {
-		return modality === 'otb' ? 'OTB local' : 'Lichess';
-	}
-
 	/** @param {{ modality?: string, venue?: string | null, city?: string | null, state?: string | null, country?: string | null }} tournament */
 	function locationLine(tournament) {
 		if (tournament.modality === 'lichess') return 'Online · Lichess';
@@ -40,7 +48,7 @@
 <div class="page stack">
 	<header>
 		<h1 class="page-title">Find tournaments</h1>
-		<p class="page-lede">Search published Lichess and local OTB events by type, location, and date.</p>
+		<p class="page-lede">Search Lichess and OTB events by type, location, and date.</p>
 	</header>
 
 	<form method="get" class="panel filters">
@@ -49,7 +57,7 @@
 			<select name="modality">
 				<option value="" selected={data.filters.modality === ''}>All</option>
 				<option value="lichess" selected={data.filters.modality === 'lichess'}>Lichess</option>
-				<option value="otb" selected={data.filters.modality === 'otb'}>OTB local</option>
+				<option value="otb" selected={data.filters.modality === 'otb'}>OTB</option>
 			</select>
 		</label>
 		<label class="field">
@@ -69,16 +77,27 @@
 		</label>
 		<label class="field">
 			From
-			<input type="date" name="from" value={data.filters.from} />
+			<input type="date" name="from" value={data.filters.from} required />
 		</label>
-		<label class="field">
-			To
-			<input type="date" name="to" value={data.filters.to} />
-		</label>
+		{#if showEndDate}
+			<label class="field">
+				To
+				<input type="date" name="to" value={data.filters.to} />
+			</label>
+		{:else}
+			<div class="field optional-end">
+				<span class="optional-end-label">To</span>
+				<button type="button" class="link optional-end-btn" onclick={() => (endDateOpen = true)}>
+					Add end date
+				</button>
+			</div>
+		{/if}
 		<div class="filter-actions">
 			<button type="submit" class="btn btn-primary">Search</button>
-			{#if $page.url.search}
-				<a href={resolve('/tournaments')} class="btn btn-secondary">Clear</a>
+			{#if hasExtraFilters}
+				<a href="{resolve('/tournaments')}?from={encodeURIComponent(data.filters.from)}" class="btn btn-secondary"
+					>Clear</a
+				>
 			{/if}
 		</div>
 	</form>
@@ -91,9 +110,26 @@
 				<li>
 					<a href={resolve(`/tournaments/${tournament.id}`)} class="list-link">
 						<div class="result-row">
-							<div>
-								<p class="result-type">{tournament.title}</p>
-								<h2 class="result-title">{modalityLabel(tournament.modality)}</h2>
+							<div class="result-main">
+								<div class="result-heading">
+									<span
+										class="status-badge status-{tournament.scheduleStatus.key}"
+										class:is-live={tournament.scheduleStatus.key === 'live'}
+									>
+										{#if tournament.scheduleStatus.key === 'live'}
+											<span class="live-dot" aria-hidden="true"></span>
+										{/if}
+										{tournament.scheduleStatus.label}
+									</span>
+									<p class="result-type">{modalityLabel(tournament.modality)}</p>
+									{#if tournament.timeControl}
+										<p class="result-tc">
+											<span class="tc-speed">{tournament.timeControl.label}</span>
+											<span class="tc-clock">{tournament.timeControl.clock}</span>
+										</p>
+									{/if}
+								</div>
+								<h2 class="result-title">{tournament.title}</h2>
 								<p class="result-meta">{locationLine(tournament)}</p>
 								<p class="result-meta">{formatDate(tournament.startDate)}</p>
 							</div>
@@ -141,6 +177,29 @@
 		gap: $space-2;
 	}
 
+	.optional-end {
+		display: flex;
+		flex-direction: column;
+		justify-content: flex-end;
+		gap: $space-2;
+		min-height: 100%;
+	}
+
+	.optional-end-label {
+		font-size: $font-size-sm;
+		font-weight: $font-weight-medium;
+		color: $color-text;
+	}
+
+	.optional-end-btn {
+		align-self: flex-start;
+		padding: 0;
+		border: 0;
+		background: none;
+		cursor: pointer;
+		font: inherit;
+	}
+
 	:global(input.uppercase) {
 		text-transform: uppercase;
 	}
@@ -162,13 +221,107 @@
 		gap: $space-3;
 	}
 
+	.result-main {
+		min-width: 0;
+		flex: 1;
+	}
+
+	.result-heading {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: $space-2;
+		margin-bottom: $space-1;
+	}
+
+	.status-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: $space-1;
+		padding: $space-1 $space-2;
+		border-radius: $radius-sm;
+		font-size: $font-size-xs;
+		font-weight: $font-weight-semibold;
+		letter-spacing: $letter-spacing-wide;
+		text-transform: uppercase;
+		line-height: 1.2;
+		background: color-mix(in srgb, $color-text-muted 14%, $color-surface);
+		color: $color-text-muted;
+	}
+
+	.status-upcoming {
+		background: $color-primary-soft;
+		color: $color-primary;
+	}
+
+	.status-ended,
+	.status-completed {
+		background: color-mix(in srgb, $color-border 55%, $color-surface);
+		color: $color-text-muted;
+	}
+
+	.status-cancelled {
+		background: $color-danger-soft;
+		color: $color-danger;
+	}
+
+	.status-live,
+	.is-live {
+		background: $color-danger;
+		color: $color-on-primary;
+		box-shadow: 0 0 0 1px color-mix(in srgb, $color-danger 35%, transparent);
+	}
+
+	.live-dot {
+		width: 0.45rem;
+		height: 0.45rem;
+		border-radius: $radius-full;
+		background: currentColor;
+		animation: live-pulse 1.4s ease-out infinite;
+	}
+
+	@keyframes live-pulse {
+		0% {
+			opacity: 1;
+			transform: scale(1);
+		}
+		70% {
+			opacity: 0.35;
+			transform: scale(0.85);
+		}
+		100% {
+			opacity: 1;
+			transform: scale(1);
+		}
+	}
+
 	.result-type {
-		margin: 0 0 $space-1;
+		margin: 0;
 		font-size: $font-size-xs;
 		font-weight: $font-weight-semibold;
 		letter-spacing: $letter-spacing-wide;
 		text-transform: uppercase;
 		color: $color-primary;
+	}
+
+	.result-tc {
+		display: inline-flex;
+		align-items: baseline;
+		gap: $space-2;
+		margin: 0;
+		font-size: $font-size-xs;
+		font-weight: $font-weight-semibold;
+		letter-spacing: $letter-spacing-wide;
+		text-transform: uppercase;
+		color: $color-text;
+	}
+
+	.tc-clock {
+		font-variant-numeric: tabular-nums;
+		font-weight: $font-weight-medium;
+		letter-spacing: normal;
+		text-transform: none;
+		color: $color-text-muted;
 	}
 
 	.result-title {

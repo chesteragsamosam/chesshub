@@ -4,6 +4,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { untrack } from 'svelte';
 	import UserAvatar from '$lib/components/UserAvatar.svelte';
+	import VenueMap from '$lib/components/VenueMap.svelte';
 
 	let { data, form } = $props();
 
@@ -337,8 +338,14 @@
 		<p class="status-row">
 			<span class="status">{tournamentStatus}</span>
 			<span class="modality-badge">
-				{data.tournament.modality === 'otb' ? 'OTB local' : 'Lichess'}
+				{data.tournament.modality === 'otb' ? 'OTB' : 'Lichess'}
 			</span>
+			{#if data.tournament.timeControl}
+				<span class="tc-badge">
+					{data.tournament.timeControl.label}
+					· {data.tournament.timeControl.clock}
+				</span>
+			{/if}
 			{#if liveStatusLabel}
 				<span class="live-badge" class:is-live={live?.status === 'started'}>{liveStatusLabel}</span>
 			{/if}
@@ -552,7 +559,7 @@
 						{#if shouldStreamLive}
 							<p class="live-refresh">
 								{#if liveStreamState === 'live'}
-									Live updates via ChessHub (shared Lichess feed).
+									Live updates while this page is open.
 								{:else if liveStreamState === 'reconnecting'}
 									Reconnecting to live updates…
 								{:else if liveStreamState === 'connecting'}
@@ -596,6 +603,40 @@
 							{/if}
 						</dd>
 					</div>
+					{#if data.tournament.modality === 'otb' &&
+						data.tournament.latitude != null &&
+						data.tournament.longitude != null &&
+						data.googleMapsApiKey}
+						<div class="venue-map-block">
+							<dt>Map</dt>
+							<dd>
+								<VenueMap
+									apiKey={data.googleMapsApiKey}
+									latitude={data.tournament.latitude}
+									longitude={data.tournament.longitude}
+									title={data.tournament.venue}
+								/>
+							</dd>
+						</div>
+					{:else if data.tournament.modality === 'otb' &&
+						data.tournament.latitude != null &&
+						data.tournament.longitude != null}
+						<div>
+							<dt>Map</dt>
+							<dd>
+								<a
+									href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+										`${data.tournament.latitude},${data.tournament.longitude}`
+									)}`}
+									class="link"
+									target="_blank"
+									rel="noopener noreferrer"
+								>
+									Open in Google Maps
+								</a>
+							</dd>
+						</div>
+					{/if}
 					<div>
 						<dt>Entry fee</dt>
 						<dd>{formatFee(data.tournament.entryFeeCents, data.tournament.currency)}</dd>
@@ -609,6 +650,30 @@
 					</div>
 				</dl>
 			</section>
+
+			{#if data.sponsors.length > 0}
+				<section class="panel">
+					<h2 class="section-title">Sponsors</h2>
+					<ul class="sponsor-list">
+						{#each data.sponsors as sponsor (sponsor.id)}
+							<li>
+								{#if sponsor.url}
+									<a
+										href={sponsor.url}
+										class="link"
+										target="_blank"
+										rel="noopener noreferrer"
+									>
+										{sponsor.name}
+									</a>
+								{:else}
+									{sponsor.name}
+								{/if}
+							</li>
+						{/each}
+					</ul>
+				</section>
+			{/if}
 
 			{#if data.tournament.description}
 				<section class="panel">
@@ -696,7 +761,7 @@
 										<button type="submit" class="btn btn-primary">Claim via GCash</button>
 									</form>
 								{:else}
-									<p class="alert alert-warning">GCash prize payouts are not configured yet.</p>
+									<p class="alert alert-warning">GCash prize payouts aren’t available yet.</p>
 								{/if}
 							{/if}
 						</div>
@@ -734,8 +799,7 @@
 
 			{#if tournamentStatus === 'draft'}
 				<p class="full">
-					This tournament is still a draft. Publish it from the organizer edit page before players can
-					register.
+					This tournament isn’t published yet, so registration is closed.
 				</p>
 			{:else if tournamentStatus === 'cancelled'}
 				<p class="full">This tournament has been cancelled.</p>
@@ -756,7 +820,7 @@
 							<button type="submit" class="btn btn-primary btn-block">Join Lichess Arena</button>
 						</form>
 						<p class="hint">
-							ChessHub joins the private Arena for you — password and allow list are handled on the server.
+							ChessHub will add you to the private Lichess Arena automatically.
 						</p>
 					{:else}
 						<a
@@ -816,7 +880,7 @@
 					</p>
 				{/if}
 				{#if isPaid && !data.paymongoConfigured}
-					<p class="hint">Online payments are not set up on this server yet.</p>
+					<p class="hint">Online payments aren’t available for this event yet.</p>
 				{/if}
 			{/if}
 		</aside>
@@ -855,6 +919,15 @@
 		letter-spacing: $letter-spacing-wide;
 		text-transform: uppercase;
 		color: $color-primary;
+	}
+
+	.tc-badge {
+		font-size: $font-size-xs;
+		font-weight: $font-weight-semibold;
+		letter-spacing: $letter-spacing-wide;
+		text-transform: uppercase;
+		color: $color-text;
+		font-variant-numeric: tabular-nums;
 	}
 
 	.live-badge {
@@ -1032,6 +1105,16 @@
 			font-size: $font-size-sm;
 		}
 
+		.venue-map-block {
+			flex-direction: column;
+			align-items: stretch;
+
+			dd {
+				text-align: left;
+				width: 100%;
+			}
+		}
+
 		dt {
 			color: $color-text-muted;
 		}
@@ -1040,6 +1123,16 @@
 			margin: 0;
 			text-align: right;
 		}
+	}
+
+	.sponsor-list {
+		margin: $space-3 0 0;
+		padding: 0;
+		list-style: none;
+		display: flex;
+		flex-direction: column;
+		gap: $space-2;
+		font-size: $font-size-sm;
 	}
 
 	.about {

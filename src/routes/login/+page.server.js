@@ -17,7 +17,7 @@ export const load = (event) => {
 };
 
 export const actions = {
-	default: async (event) => {
+	email: async (event) => {
 		const formData = await event.request.formData();
 		const email = formData.get('email')?.toString() ?? '';
 		const password = formData.get('password')?.toString() ?? '';
@@ -32,7 +32,8 @@ export const actions = {
 					email,
 					password,
 					callbackURL: '/auth/verification-success'
-				}
+				},
+				headers: event.request.headers
 			});
 		} catch (error) {
 			if (error instanceof APIError) {
@@ -45,7 +46,5 @@ export const actions = {
 		redirect(302, '/');
 	},
 
-	google: async (event) => startSocialSignIn(event, 'google', { errorPath: '/login' }),
-
-	facebook: async (event) => startSocialSignIn(event, 'facebook', { errorPath: '/login' })
+	google: async (event) => startSocialSignIn(event, 'google', { errorPath: '/login' })
 };

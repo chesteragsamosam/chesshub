@@ -16,16 +16,10 @@ declare global {
 					renderButton: (parent: HTMLElement, config: Record<string, unknown>) => void;
 				};
 			};
+			// Loaded dynamically; shape is validated at runtime in google-maps.js
+			maps?: any;
 		};
-		FB?: {
-			init: (config: Record<string, unknown>) => void;
-			XFBML: { parse: (element?: HTMLElement) => void };
-			login: (...args: unknown[]) => void;
-		};
-		fbAsyncInit?: () => void;
-		__chesshubOnFbLogin?:
-			| ((response: { authResponse?: { accessToken?: string } | null }) => void | Promise<void>)
-			| undefined;
+		__chesshubGoogleMapsReady?: () => void;
 	}
 }
 

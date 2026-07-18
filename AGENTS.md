@@ -8,15 +8,15 @@
 
 ## Auth skills
 
-ChessHub **app login** is Better Auth (`src/lib/server/auth.js`): email/password plus optional Google and Meta/Facebook social providers.
+ChessHub **app login** is Better Auth (`src/lib/server/auth.js`): email/password plus optional **Google** social login.
 
-- Config / hooks: `src/lib/server/auth.js`, `src/lib/server/auth-social.js`, `src/lib/server/auth-social-bind.js`
-- UI: `/login`, `/register` (`SocialLoginButtons.svelte`); buttons render only when env credentials exist
-- Env: `GOOGLE_CLIENT_ID/SECRET`, `FACEBOOK_CLIENT_ID/SECRET` (see `.env.example` and README Authentication)
-- Callbacks: `{ORIGIN}/api/auth/callback/google` and `{ORIGIN}/api/auth/callback/facebook`
-- Facebook login **auto-binds** a public URL into `social_link` (`platform = 'facebook'`)
+- Config: `src/lib/server/auth.js`, `src/lib/server/auth-social.js`
+- UI: `/login`, `/register` (`SocialLoginButtons.svelte`); Google button renders when `GOOGLE_CLIENT_ID/SECRET` exist
+- Env: `GOOGLE_CLIENT_ID/SECRET` (see `.env.example` and README Authentication)
+- Callback: `{ORIGIN}/api/auth/callback/google`
+- **Facebook Login is postponed** (do not wire `FACEBOOK_*` into Better Auth until Meta OAuth is revisited)
 
-Do **not** fold Lichess into Better Auth `socialProviders`. Lichess OAuth is a separate chess-account linking flow (`chess_account`), not ChessHub identity.
+Do **not** fold Lichess or Chess.com into Better Auth `socialProviders`. Those OAuth flows only link chess profiles into `chess_account`, not ChessHub identity.
 
 ---
 
@@ -28,6 +28,17 @@ When working on organizer guides, prize rules, payout holds, advertising, or fai
 
 ---
 
+## Chess.com linking
+
+Chess.com account linking uses Chess.com OAuth 2.0 + PKCE (`src/lib/server/chess/chesscom.js`):
+
+- Env: `CHESSCOM_CLIENT_ID`, optional `CHESSCOM_CLIENT_SECRET`
+- Redirect URI: `{ORIGIN}/api/chess/chesscom/callback`
+- Routes: `/api/chess/chesscom/start`, `/api/chess/chesscom/callback`
+- Scopes: `openid profile`
+- Without Client ID, settings falls back to username lookup via the public API (not confirmed)
+
+---
 You are able to use the Svelte MCP server, where you have access to comprehensive Svelte 5 and SvelteKit documentation. Here's how to use the available tools effectively:
 
 ## Available Svelte MCP Tools:

@@ -1,62 +1,96 @@
-import { fetchChessComRatings } from '$lib/server/chess/chesscom';
-import { lookupFidePlayer } from '$lib/server/chess/fide';
-import { fetchLichessPublicRatings } from '$lib/server/chess/lichess';
-import { mockRatingsForUsername } from '$lib/server/chess/mock-ratings';
+import { fetchPlatformRatings } from '$lib/server/chess/refresh-ratings';
+import { isRatingsCacheFresh, parseRatingsJson } from '$lib/server/chess/ratings-cache';
+import { updateChessAccountRatings } from '$lib/server/db/queries';
 import { primaryRating } from '$lib/chess-ratings';
 
 /**
- * Attach live ratings from public APIs. Nothing is written to the database.
- * @param {Array<Record<string, any>>} accounts
+ * @typedef {{ mode?: 'refresh' | 'cache-only' }} EnrichOptions
+ * `refresh` (default): use cache within TTL, otherwise fetch + persist.
+ * `cache-only`: never call external APIs — leaderboards stay a consistent DB snapshot.
  */
-export async function enrichChessAccountsWithRatings(accounts) {
-	return Promise.all(
-		accounts.map(async (account) => {
-			try {
-				const mock = mockRatingsForUsername(account.username);
-				if (mock) {
-					return {
-						...account,
-						rating: mock.rating,
-						ratings: mock.ratings
-					};
-				}
 
-				if (account.platform === 'lichess') {
-					const result = await fetchLichessPublicRatings(account.username);
-					if (!result) return withEmptyRatings(account);
-					return {
-						...account,
-						rating: result.rating,
-						ratings: result.ratings
-					};
-				}
+/**
+ * Attach ratings from DB cache and optionally refresh when stale.
+ * @param {Array<Record<string, any>>} accounts
+ * @param {EnrichOptions} [options]
+ */
+export async function enrichChessAccountsWithRatings(accounts, options = {}) {
+	const mode = options.mode ?? 'refresh';
+	return Promise.all(accounts.map((account) => enrichOneAccount(account, mode)));
+}
 
-				if (account.platform === 'chesscom') {
-					const ratings = await fetchChessComRatings(account.username);
-					return {
-						...account,
-						rating: primaryRating('chesscom', ratings),
-						ratings
-					};
-				}
+/**
+ * @param {Record<string, any>} account
+ * @param {'refresh' | 'cache-only'} mode
+ */
+async function enrichOneAccount(account, mode) {
+	const cachedRatings = parseRatingsJson(account.ratingsJson);
+	const hasCache =
+		cachedRatings != null || (typeof account.rating === 'number' && Number.isFinite(account.rating));
 
-				if (account.platform === 'fide') {
-					const result = await lookupFidePlayer(account.username);
-					if (!result.ok) return withEmptyRatings(account);
-					return {
-						...account,
-						displayName: result.displayName ?? account.displayName,
-						rating: result.rating,
-						ratings: result.ratings
-					};
+	if (mode === 'cache-only') {
+		if (!hasCache) return withEmptyRatings(account);
+		return {
+			...account,
+			rating: account.rating ?? primaryRating(account.platform, cachedRatings),
+			ratings: cachedRatings
+		};
+	}
+
+	try {
+		if (hasCache && isRatingsCacheFresh(account.platform, account.ratingsUpdatedAt)) {
+			return {
+				...account,
+				rating: account.rating ?? primaryRating(account.platform, cachedRatings),
+				ratings: cachedRatings
+			};
+		}
+
+		const fresh = await fetchPlatformRatings(account);
+		if (fresh) {
+			if (account.id) {
+				try {
+					await updateChessAccountRatings(account.id, {
+						rating: fresh.rating,
+						ratings: fresh.ratings,
+						displayName: fresh.displayName,
+						federation: fresh.federation,
+						title: fresh.title
+					});
+				} catch {
+					// serve fresh payload even if persist fails
 				}
-			} catch {
-				// fall through
 			}
 
-			return withEmptyRatings(account);
-		})
-	);
+			return {
+				...account,
+				displayName: fresh.displayName ?? account.displayName,
+				federation: fresh.federation ?? account.federation ?? null,
+				title: fresh.title ?? account.title ?? null,
+				rating: fresh.rating,
+				ratings: fresh.ratings,
+				ratingsUpdatedAt: new Date()
+			};
+		}
+
+		if (hasCache) {
+			return {
+				...account,
+				rating: account.rating ?? primaryRating(account.platform, cachedRatings),
+				ratings: cachedRatings
+			};
+		}
+	} catch {
+		if (hasCache) {
+			return {
+				...account,
+				rating: account.rating ?? primaryRating(account.platform, cachedRatings),
+				ratings: cachedRatings
+			};
+		}
+	}
+
+	return withEmptyRatings(account);
 }
 
 /**
@@ -77,8 +111,11 @@ export function publicChessAccounts(accounts) {
 		username: account.username,
 		externalId: account.externalId ?? null,
 		displayName: account.displayName ?? null,
+		federation: account.federation ?? null,
+		title: account.title ?? null,
 		rating: account.rating ?? null,
 		ratings: account.ratings ?? null,
+		ratingsUpdatedAt: account.ratingsUpdatedAt ?? null,
 		verified: Boolean(account.verified),
 		linkedAt: account.linkedAt ?? null
 	}));

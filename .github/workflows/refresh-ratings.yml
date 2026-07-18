@@ -1,0 +1,26 @@
+name: Refresh chess ratings
+
+# Optional: keep ChessHub rating caches warm when not on Vercel Cron.
+# Set repository secrets: CRON_URL (e.g. https://your.app/api/cron/refresh-ratings), CRON_SECRET
+
+on:
+  schedule:
+    - cron: '0 4 * * *'
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refresh stale ratings
+        env:
+          CRON_URL: ${{ secrets.CRON_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "CRON_URL / CRON_SECRET secrets not set — skipping"
+            exit 0
+          fi
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${CRON_URL}?limit=200"
