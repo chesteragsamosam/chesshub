@@ -6,6 +6,20 @@
 
 ---
 
+## Auth skills
+
+ChessHub **app login** is Better Auth (`src/lib/server/auth.js`): email/password plus optional Google and Meta/Facebook social providers.
+
+- Config / hooks: `src/lib/server/auth.js`, `src/lib/server/auth-social.js`, `src/lib/server/auth-social-bind.js`
+- UI: `/login`, `/register` (`SocialLoginButtons.svelte`); buttons render only when env credentials exist
+- Env: `GOOGLE_CLIENT_ID/SECRET`, `FACEBOOK_CLIENT_ID/SECRET` (see `.env.example` and README Authentication)
+- Callbacks: `{ORIGIN}/api/auth/callback/google` and `{ORIGIN}/api/auth/callback/facebook`
+- Facebook login **auto-binds** a public URL into `social_link` (`platform = 'facebook'`)
+
+Do **not** fold Lichess into Better Auth `socialProviders`. Lichess OAuth is a separate chess-account linking flow (`chess_account`), not ChessHub identity.
+
+---
+
 ## Lichess skills
 
 When working on Lichess OAuth, ratings, Arena/Swiss standings, or API clients, use the **lichess-api** skill (`.agents/skills/lichess-api/`) and the OpenAPI mirror `Lichessorg API reference.json`.

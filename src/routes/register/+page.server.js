@@ -1,13 +1,19 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { auth } from '$lib/server/auth';
 import { APIError } from 'better-auth/api';
+import { getEnabledSocialProviders, startSocialSignIn } from '$lib/server/auth-social';
 
 /** @type {import('./$types').PageServerLoad} */
 export const load = (event) => {
 	if (event.locals.user) {
 		redirect(302, '/');
 	}
-	return {};
+
+	const oauthError = event.url.searchParams.get('error') === 'oauth';
+	return {
+		socialProviders: getEnabledSocialProviders(),
+		oauthError
+	};
 };
 
 export const actions = {
@@ -38,5 +44,9 @@ export const actions = {
 		}
 
 		redirect(302, '/');
-	}
+	},
+
+	google: async (event) => startSocialSignIn(event, 'google', { errorPath: '/register' }),
+
+	facebook: async (event) => startSocialSignIn(event, 'facebook', { errorPath: '/register' })
 };

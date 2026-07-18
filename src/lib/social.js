@@ -6,8 +6,17 @@ export const SOCIAL_PLATFORMS = {
 	discord: 'Discord',
 	twitch: 'Twitch',
 	github: 'GitHub',
+	facebook: 'Facebook',
 	other: 'Other'
 };
+
+/**
+ * Public Facebook profile URL from the OAuth account id (numeric Graph id).
+ * @param {string} accountId
+ */
+export function facebookProfileUrl(accountId) {
+	return `https://www.facebook.com/${accountId}`;
+}
 
 /**
  * @param {string} url

@@ -20,6 +20,7 @@
 		"db:migrate-paymongo": "node --env-file=.env scripts/migrate-paymongo.mjs",
 		"db:migrate-modality": "node --env-file=.env scripts/migrate-tournament-modality.mjs",
 		"db:migrate-arena-password": "node --env-file=.env scripts/migrate-lichess-arena-password.mjs",
+		"db:migrate-social-facebook": "node --env-file=.env scripts/migrate-social-facebook.mjs",
 		"db:seed": "node --env-file=.env scripts/seed-players.mjs",
 		"auth:schema": "better-auth generate --config src/lib/server/auth.js --output src/lib/server/db/auth.schema.js --yes"
 	},

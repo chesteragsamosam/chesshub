@@ -4,7 +4,7 @@ description: >-
   Guides Lichess.org API integration: base URL, rate limits, NDJSON streams,
   OAuth2 PKCE and personal tokens, scopes, Arena/Swiss tournaments, users,
   games, teams, challenges, and bulk pairings. Use when building, modifying,
-  or reviewing any Lichess integration — OAuth login, fetching ratings,
+  or reviewing any Lichess integration — OAuth account linking, fetching ratings,
   importing tournament standings, creating arenas/swiss events, Board/Bot
   play, or calling https://lichess.org/api endpoints. Source of truth:
   `Lichessorg API reference.json` (OpenAPI 2.0.153).
@@ -28,9 +28,11 @@ Local mirror of the spec: `Lichessorg API reference.json` at the repo root. Pref
 
 ## Integration routing
 
+ChessHub **app login** is Better Auth (email/password, Google, Meta) — not Lichess. Lichess OAuth here only **links a chess profile** for an already-signed-in ChessHub user.
+
 | Building… | Use | Details |
 | --- | --- | --- |
-| Login with Lichess / link account | OAuth2 Authorization Code + **PKCE S256** | [references/auth.md](references/auth.md) |
+| Link Lichess chess account (after ChessHub login) | OAuth2 Authorization Code + **PKCE S256** | [references/auth.md](references/auth.md) |
 | Quick server scripts (no user login) | Personal access token (`Authorization: Bearer …`) | [references/auth.md](references/auth.md) |
 | Public user ratings / profile | `GET /api/user/{username}` | [references/users-games.md](references/users-games.md) |
 | Logged-in profile | `GET /api/account` | [references/auth.md](references/auth.md) |
