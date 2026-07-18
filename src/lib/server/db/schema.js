@@ -57,6 +57,7 @@ export const socialLink = mysqlTable(
 			'discord',
 			'twitch',
 			'github',
+			'facebook',
 			'other'
 		]).notNull(),
 		url: varchar('url', { length: 512 }).notNull(),

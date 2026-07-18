@@ -1,8 +1,18 @@
 <script>
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
+	import SocialLoginButtons from '$lib/components/SocialLoginButtons.svelte';
 
-	let { form } = $props();
+	let { data, form } = $props();
+
+	const emailFormError = $derived(form?.email !== undefined ? (form.message ?? null) : null);
+	const socialError = $derived(
+		data.oauthError
+			? 'Social sign-in failed. Please try again.'
+			: form?.email === undefined
+				? (form?.message ?? null)
+				: null
+	);
 </script>
 
 <div class="page-narrow stack">
@@ -20,11 +30,13 @@
 			Password
 			<input type="password" name="password" required />
 		</label>
-		{#if form?.message}
-			<p class="alert alert-error">{form.message}</p>
+		{#if emailFormError}
+			<p class="alert alert-error">{emailFormError}</p>
 		{/if}
 		<button type="submit" class="btn btn-primary btn-block">Sign in</button>
 	</form>
+
+	<SocialLoginButtons providers={data.socialProviders} errorMessage={socialError} />
 
 	<p class="footer">
 		No account?

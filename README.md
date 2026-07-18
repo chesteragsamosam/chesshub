@@ -18,8 +18,12 @@ Required:
 
 Optional:
 
+- `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — Google login (redirect URI `{ORIGIN}/api/auth/callback/google`)
+- `FACEBOOK_CLIENT_ID` / `FACEBOOK_CLIENT_SECRET` — Meta/Facebook login (redirect URI `{ORIGIN}/api/auth/callback/facebook`)
 - `LICHESS_CLIENT_ID` — Lichess OAuth app client id (PKCE; no secret)
 - `PAYMONGO_SECRET_KEY` / `PAYMONGO_WEBHOOK_SECRET` — paid tournament registration (GCash, QR Ph)
+
+When a user signs in with Facebook, ChessHub also saves a Facebook profile URL on their social links.
 
 2. Start MySQL and sync schema:
 
@@ -30,6 +34,8 @@ pnpm db:push
 node --env-file=.env scripts/migrate-paymongo.mjs
 # If adding Lichess vs OTB modality on an existing DB:
 node --env-file=.env scripts/migrate-tournament-modality.mjs
+# If adding Facebook to social_link platforms on an existing DB:
+pnpm db:migrate-social-facebook
 ```
 
 3. Run the app:
