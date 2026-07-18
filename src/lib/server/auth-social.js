@@ -5,11 +5,17 @@ import { auth } from '$lib/server/auth';
 
 /**
  * Which social login providers are configured via env credentials.
+ * Client IDs are safe to expose to the browser for official SDK buttons.
  */
 export function getEnabledSocialProviders() {
+	const google = Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET);
+	const facebook = Boolean(env.FACEBOOK_CLIENT_ID && env.FACEBOOK_CLIENT_SECRET);
+
 	return {
-		google: Boolean(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
-		facebook: Boolean(env.FACEBOOK_CLIENT_ID && env.FACEBOOK_CLIENT_SECRET)
+		google,
+		facebook,
+		googleClientId: google ? env.GOOGLE_CLIENT_ID : null,
+		facebookAppId: facebook ? env.FACEBOOK_CLIENT_ID : null
 	};
 }
 

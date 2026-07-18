@@ -22,26 +22,29 @@
 		<p class="page-lede">Welcome back to ChessHub.</p>
 	</header>
 
-	<SocialLoginButtons providers={data.socialProviders} errorMessage={socialError} />
+	<SocialLoginButtons
+		providers={data.socialProviders}
+		errorMessage={socialError}
+		errorPath="/login"
+	/>
 
-	{#if hasSocial}
-		<p class="divider"><span>or sign in with email</span></p>
-	{/if}
-
-	<form method="post" use:enhance class="form">
-		<label class="field">
-			Email
-			<input type="email" name="email" value={form?.email ?? ''} required />
-		</label>
-		<label class="field">
-			Password
-			<input type="password" name="password" required />
-		</label>
-		{#if emailFormError}
-			<p class="alert alert-error">{emailFormError}</p>
-		{/if}
-		<button type="submit" class="btn btn-secondary btn-block">Sign in</button>
-	</form>
+	<details class="email-accordion" open={!hasSocial || Boolean(emailFormError)}>
+		<summary>Sign in with email</summary>
+		<form method="post" use:enhance class="form">
+			<label class="field">
+				Email
+				<input type="email" name="email" value={form?.email ?? ''} required />
+			</label>
+			<label class="field">
+				Password
+				<input type="password" name="password" required />
+			</label>
+			{#if emailFormError}
+				<p class="alert alert-error">{emailFormError}</p>
+			{/if}
+			<button type="submit" class="btn btn-secondary btn-block">Sign in</button>
+		</form>
+	</details>
 
 	<p class="footer">
 		No account?
@@ -58,31 +61,50 @@
 		gap: $space-6;
 	}
 
+	.email-accordion {
+		border-top: $border-width solid $color-border;
+		padding-top: $space-4;
+
+		summary {
+			cursor: pointer;
+			list-style: none;
+			font-size: $font-size-sm;
+			font-weight: $font-weight-semibold;
+			color: $color-text-muted;
+			user-select: none;
+
+			&::-webkit-details-marker {
+				display: none;
+			}
+
+			&::after {
+				content: '';
+				display: inline-block;
+				margin-left: $space-2;
+				border: solid currentColor;
+				border-width: 0 1.5px 1.5px 0;
+				padding: 2.5px;
+				transform: rotate(45deg);
+				vertical-align: 0.15em;
+				transition: transform $duration-fast $ease-out;
+			}
+		}
+
+		&[open] summary {
+			margin-bottom: $space-4;
+			color: $color-text;
+
+			&::after {
+				transform: rotate(-135deg);
+				vertical-align: -0.05em;
+			}
+		}
+	}
+
 	.form {
 		display: flex;
 		flex-direction: column;
 		gap: $space-4;
-	}
-
-	.divider {
-		display: flex;
-		align-items: center;
-		gap: $space-3;
-		margin: 0;
-		font-size: $font-size-sm;
-		color: $color-text-muted;
-
-		&::before,
-		&::after {
-			content: '';
-			flex: 1;
-			height: 1px;
-			background: $color-border;
-		}
-
-		span {
-			flex-shrink: 0;
-		}
 	}
 
 	.footer {
