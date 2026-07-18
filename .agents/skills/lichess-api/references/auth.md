@@ -1,10 +1,12 @@
 # Lichess authentication
 
+In ChessHub, Lichess OAuth is **chess-account linking** (`chess_account`), not app login. Users sign into ChessHub with Better Auth (email/password, Google, or Meta) first, then link Lichess from `/settings/profile`.
+
 ## Which method?
 
 | Need | Method |
 | --- | --- |
-| User logs in / links their Lichess account | Authorization Code Flow with **PKCE** (`S256` only) |
+| Signed-in ChessHub user links their Lichess account | Authorization Code Flow with **PKCE** (`S256` only) |
 | Server-side scripts as one fixed account | Personal access token |
 
 Unregistered/public OAuth clients are allowed (any unique `client_id`). Refresh tokens are **not** supported. Access tokens are long-lived (about one year) unless revoked.
@@ -17,7 +19,7 @@ Unregistered/public OAuth clients are allowed (any unique `client_id`). Refresh 
 
 Example: `GET https://lichess.org/api/account`
 
-## OAuth2 PKCE (login with Lichess)
+## OAuth2 PKCE (link Lichess account)
 
 1. Generate `code_verifier` and `state`; store server-side (session). Never put `code_verifier` in URLs or abuse `state` to store it.
 2. `code_challenge` = Base64URL(SHA-256(`code_verifier`)); `code_challenge_method=S256`

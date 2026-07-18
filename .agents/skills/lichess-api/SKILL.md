@@ -28,9 +28,11 @@ Local mirror of the spec: `Lichessorg API reference.json` at the repo root. Pref
 
 ## Integration routing
 
+ChessHub **app login** is Better Auth (email/password, Google, Meta) — not Lichess. Lichess OAuth here only **links a chess profile** for an already-signed-in ChessHub user.
+
 | Building… | Use | Details |
 | --- | --- | --- |
-| Login with Lichess / link account | OAuth2 Authorization Code + **PKCE S256** | [references/auth.md](references/auth.md) |
+| Link Lichess chess account (after ChessHub login) | OAuth2 Authorization Code + **PKCE S256** | [references/auth.md](references/auth.md) |
 | Quick server scripts (no user login) | Personal access token (`Authorization: Bearer …`) | [references/auth.md](references/auth.md) |
 | Public user ratings / profile | `GET /api/user/{username}` | [references/users-games.md](references/users-games.md) |
 | Logged-in profile | `GET /api/account` | [references/auth.md](references/auth.md) |
