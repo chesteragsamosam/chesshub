@@ -2,8 +2,13 @@
 	import { enhance } from '$app/forms';
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { page } from '$app/stores';
 	import { authClient } from '$lib/client/auth-client';
-	import { loadFacebookSdk, loadGoogleIdentity } from '$lib/client/social-sdks';
+	import {
+		canUseFacebookLoginButton,
+		loadFacebookSdk,
+		loadGoogleIdentity
+	} from '$lib/client/social-sdks';
 
 	/**
 	 * @typedef {{
@@ -22,6 +27,8 @@
 	let { providers, errorMessage = null, errorPath = '/login' } = $props();
 
 	const anyEnabled = $derived(providers.google || providers.facebook);
+	/** Facebook Login Button plugin requires https:// — use OAuth redirect on http://. */
+	const facebookSdkAllowed = $derived($page.url.protocol === 'https:');
 
 	/** @type {HTMLDivElement | undefined} */
 	let rootEl = $state();
@@ -33,7 +40,7 @@
 	let googleReady = $state(false);
 	let facebookReady = $state(false);
 	let googleFailed = $state(false);
-	let facebookFailed = $state(false);
+	let facebookSdkFailed = $state(false);
 	let localError = $state(/** @type {string | null} */ (null));
 	let busy = $state(false);
 	let buttonWidth = $state(320);
@@ -59,10 +66,7 @@
 
 		const { error } = await authClient.signIn.social({
 			provider,
-			idToken:
-				provider === 'facebook'
-					? { token, accessToken: accessToken ?? token }
-					: { token },
+			idToken: provider === 'facebook' ? { token, accessToken: accessToken ?? token } : { token },
 			callbackURL: '/',
 			errorCallbackURL: `${errorPath}?error=oauth`
 		});
@@ -138,12 +142,23 @@
 	});
 
 	$effect(() => {
-		if (!providers.facebook || !providers.facebookAppId || !facebookButton) {
-			if (providers.facebook && !providers.facebookAppId) facebookFailed = true;
+		if (!providers.facebook) return;
+
+		// Facebook Login Button plugin only works on https:// pages.
+		if (!facebookSdkAllowed || !canUseFacebookLoginButton()) {
+			facebookReady = false;
+			facebookSdkFailed = false;
+			return;
+		}
+
+		if (!providers.facebookAppId || !facebookButton) {
+			facebookSdkFailed = true;
+			facebookReady = false;
 			return;
 		}
 
 		let cancelled = false;
+		facebookSdkFailed = false;
 		window.__chesshubOnFbLogin = async (response) => {
 			if (!response?.authResponse?.accessToken) {
 				fail('Facebook sign-in was cancelled.');
@@ -159,11 +174,11 @@
 				if (cancelled || !facebookButton) return;
 				FB.XFBML.parse(facebookButton.parentElement ?? facebookButton);
 				facebookReady = true;
-				facebookFailed = false;
+				facebookSdkFailed = false;
 			} catch (error) {
 				console.error('[auth] Facebook SDK failed', error);
 				if (!cancelled) {
-					facebookFailed = true;
+					facebookSdkFailed = true;
 					facebookReady = false;
 				}
 			}
@@ -185,26 +200,28 @@
 		<div class="buttons">
 			{#if providers.facebook}
 				<div class="provider">
-					<div class="sdk-mount" class:ready={facebookReady} aria-hidden={!facebookReady}>
-						<div
-							bind:this={facebookButton}
-							class="fb-login-button"
-							data-width={String(buttonWidth)}
-							data-size="large"
-							data-button-type="continue_with"
-							data-layout="default"
-							data-auto-logout-link="false"
-							data-use-continue-as="false"
-							data-scope="public_profile,email"
-							data-onlogin="__chesshubOnFbLogin"
-						></div>
-					</div>
+					{#if facebookSdkAllowed && providers.facebookAppId && !facebookSdkFailed}
+						<div class="sdk-mount" class:ready={facebookReady} aria-hidden={!facebookReady}>
+							<div
+								bind:this={facebookButton}
+								class="fb-login-button"
+								data-width={String(buttonWidth)}
+								data-size="large"
+								data-button-type="continue_with"
+								data-layout="default"
+								data-auto-logout-link="false"
+								data-use-continue-as="false"
+								data-scope="public_profile,email"
+								data-onlogin="__chesshubOnFbLogin"
+							></div>
+						</div>
+					{/if}
 					{#if !facebookReady}
 						<form method="post" action="?/facebook" use:enhance>
 							<button
 								type="submit"
 								class="btn-fallback btn-meta btn-block"
-								disabled={busy && !facebookFailed}
+								disabled={busy && facebookSdkAllowed && !facebookSdkFailed}
 							>
 								<span class="mark" aria-hidden="true">
 									<svg viewBox="0 0 24 24" width="20" height="20" focusable="false">

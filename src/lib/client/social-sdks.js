@@ -1,4 +1,14 @@
 /**
+ * Facebook's Login Button plugin requires HTTPS and does not work on http:// pages.
+ * @see https://developers.facebook.com/blog/post/2018/06/08/enforce-https-facebook-login/
+ * @returns {boolean}
+ */
+export function canUseFacebookLoginButton() {
+	if (typeof window === 'undefined') return false;
+	return window.location.protocol === 'https:';
+}
+
+/**
  * Load Google Identity Services once.
  * @returns {Promise<typeof window.google>}
  */
