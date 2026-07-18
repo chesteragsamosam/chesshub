@@ -13,7 +13,8 @@ import {
 	createRegistration,
 	updateRegistration,
 	getChessAccount,
-	toPublicTournament
+	toPublicTournament,
+	markPublishedTournamentsCompletedForLichessArena
 } from '$lib/server/db/queries';
 import { requireUser } from '$lib/server/auth-guards';
 import {
@@ -33,10 +34,10 @@ import {
 	toPayerFacingMessage
 } from '$lib/server/paymongo';
 import {
-	fetchLichessArenaLive,
 	joinLichessArena,
 	personalTournamentAccessCode
 } from '$lib/server/chess/lichess-tournaments';
+import { ensureArenaLive } from '$lib/server/chess/arena-live-hub';
 import { syncChessHubTournamentAllowList } from '$lib/server/chess/arena-allow-list';
 import { resolveAppOrigin } from '$lib/server/app-origin';
 
@@ -171,27 +172,42 @@ export async function load(event) {
 			event.locals.user ? getChessAccount(event.locals.user.id, 'lichess') : null
 		]);
 
-	/** @type {Awaited<ReturnType<typeof fetchLichessArenaLive>>} */
+	/** @type {Awaited<ReturnType<typeof ensureArenaLive>>['snapshot']} */
 	let lichessLive = null;
 	/** @type {string | null} */
 	let lichessLiveError = null;
+	/** @type {number | null} */
+	let lichessLiveFetchedAt = null;
+	/** @type {typeof tournament} */
+	let tournamentRow = tournament;
 	if (
 		tournament.modality === 'lichess' &&
 		tournament.lichessTournamentFormat === 'arena' &&
 		tournament.lichessTournamentId
 	) {
 		try {
-			lichessLive = await fetchLichessArenaLive(tournament.lichessTournamentId);
+			const ensured = await ensureArenaLive(tournament.lichessTournamentId);
+			lichessLive = ensured.snapshot;
+			lichessLiveError = ensured.error;
+			lichessLiveFetchedAt = ensured.fetchedAt || null;
+			// Ensure ChessHub status tracks a finished Arena even without an SSE viewer.
+			if (lichessLive?.status === 'finished' && tournament.status === 'published') {
+				await markPublishedTournamentsCompletedForLichessArena(
+					/** @type {string} */ (tournament.lichessTournamentId)
+				);
+				const refreshed = await getTournamentById(tournament.id);
+				if (refreshed) tournamentRow = refreshed;
+			}
 		} catch (err) {
 			lichessLiveError = err instanceof Error ? err.message : 'Could not load live Arena data';
 		}
 	}
 
-	const joinable = canJoinLichessArena(tournament);
+	const joinable = canJoinLichessArena(tournamentRow);
 	const hasLinkedLichess = Boolean(lichessAccount?.verified && lichessAccount.accessToken);
 
 	return {
-		tournament: toPublicTournament(tournament),
+		tournament: toPublicTournament(tournamentRow),
 		organizer: organizer
 			? {
 					id: organizer.id,
@@ -211,7 +227,7 @@ export async function load(event) {
 			paidAt: player.paidAt
 		})),
 		spotsLeft:
-			tournament.maxPlayers != null ? Math.max(0, tournament.maxPlayers - paidCount) : null,
+			tournamentRow.maxPlayers != null ? Math.max(0, tournamentRow.maxPlayers - paidCount) : null,
 		paymongoConfigured: isPaymongoConfigured(),
 		disbursementsConfigured: isPaymongoDisbursementConfigured(),
 		prizes,
@@ -226,7 +242,8 @@ export async function load(event) {
 			joinedAt: registration?.lichessJoinedAt ?? null
 		},
 		lichessLive,
-		lichessLiveError
+		lichessLiveError,
+		lichessLiveFetchedAt
 	};
 }
 

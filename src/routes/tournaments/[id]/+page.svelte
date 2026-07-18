@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import { resolve } from '$app/paths';
 	import { invalidateAll } from '$app/navigation';
+	import { untrack } from 'svelte';
 	import UserAvatar from '$lib/components/UserAvatar.svelte';
 
 	let { data, form } = $props();
@@ -11,13 +12,30 @@
 	/** Client-side countdown tick (ms). */
 	let nowMs = $state(Date.now());
 	/** When the current live payload was received (for ticking secondsToFinish). */
-	let liveLoadedAtMs = $state(Date.now());
+	let liveLoadedAtMs = $state(data.lichessLiveFetchedAt ?? Date.now());
+	/** @type {typeof data.lichessLive} */
+	let live = $state(data.lichessLive);
+	/** @type {string | null} */
+	let liveError = $state(data.lichessLiveError);
+	/** @type {'idle' | 'connecting' | 'live' | 'reconnecting' | 'closed'} */
+	let liveStreamState = $state('idle');
+	/** @type {string} */
+	let tournamentStatus = $state(data.tournament.status);
 
 	$effect(() => {
-		// Re-baseline when server sends a fresh live snapshot.
-		void data.lichessLive;
-		liveLoadedAtMs = Date.now();
+		// Re-seed only when navigating to a different tournament (not on checkout invalidate).
+		const tournamentId = data.tournament.id;
+		live = untrack(() => data.lichessLive);
+		liveError = untrack(() => data.lichessLiveError);
+		liveLoadedAtMs = untrack(() => data.lichessLiveFetchedAt) ?? Date.now();
+		tournamentStatus = untrack(() => data.tournament.status);
 		nowMs = Date.now();
+		void tournamentId;
+	});
+
+	// Keep badge/registration in sync after invalidateAll (e.g. Arena finished).
+	$effect(() => {
+		tournamentStatus = data.tournament.status;
 	});
 
 	/** @param {number} cents @param {string} currency */
@@ -64,7 +82,6 @@
 	}
 
 	const isPaid = $derived(data.tournament.entryFeeCents > 0);
-	const live = $derived(data.lichessLive);
 	const isLichessArena = $derived(
 		data.tournament.modality === 'lichess' &&
 			data.tournament.lichessTournamentFormat === 'arena' &&
@@ -111,8 +128,8 @@
 				: 'Starts in'
 	);
 
-	const shouldPollLive = $derived(
-		isLichessArena && live?.status !== 'finished' && data.tournament.status !== 'completed'
+	const shouldStreamLive = $derived(
+		isLichessArena && live?.status !== 'finished' && tournamentStatus !== 'completed'
 	);
 
 	const shouldPollCheckout = $derived(
@@ -188,13 +205,93 @@
 		return () => clearInterval(timer);
 	});
 
-	// Live Arena refresh for public viewers (standings / featured / countdown).
+	// Shared server poller → SSE push (standings / featured / countdown).
 	$effect(() => {
-		if (!shouldPollLive) return;
-		const timer = setInterval(() => {
-			if (document.visibilityState === 'visible') invalidateAll();
-		}, 12_000);
-		return () => clearInterval(timer);
+		if (!shouldStreamLive) {
+			liveStreamState = live?.status === 'finished' ? 'closed' : 'idle';
+			return;
+		}
+
+		const url = resolve(`/api/tournaments/${data.tournament.id}/live`);
+		const es = new EventSource(url);
+		liveStreamState = 'connecting';
+
+		es.addEventListener('snapshot', (event) => {
+			try {
+				const payload = JSON.parse(/** @type {MessageEvent} */ (event).data);
+				const { fetchedAt, ...snapshot } = payload;
+				live = snapshot;
+				liveError = null;
+				liveLoadedAtMs = typeof fetchedAt === 'number' ? fetchedAt : Date.now();
+				nowMs = Date.now();
+				liveStreamState = 'live';
+				if (snapshot.status === 'finished') {
+					tournamentStatus = 'completed';
+					liveStreamState = 'closed';
+					invalidateAll();
+					es.close();
+				}
+			} catch {
+				// ignore malformed events
+			}
+		});
+
+		es.addEventListener('featured', (event) => {
+			try {
+				const patch = JSON.parse(/** @type {MessageEvent} */ (event).data);
+				if (!live?.featured || live.featured.id !== patch.id) return;
+				live = {
+					...live,
+					featured: {
+						...live.featured,
+						fen: patch.fen ?? live.featured.fen,
+						lastMove: patch.lastMove ?? live.featured.lastMove,
+						clocks: patch.clocks ?? live.featured.clocks
+					}
+				};
+				if (typeof patch.fetchedAt === 'number') {
+					liveLoadedAtMs = patch.fetchedAt;
+				}
+				nowMs = Date.now();
+			} catch {
+				// ignore
+			}
+		});
+
+		es.addEventListener('live-error', (event) => {
+			try {
+				const payload = JSON.parse(/** @type {MessageEvent} */ (event).data);
+				liveError = payload.message ?? 'Live stream error';
+			} catch {
+				liveError = 'Live stream error';
+			}
+		});
+
+		es.addEventListener('tournament-status', (event) => {
+			try {
+				const payload = JSON.parse(/** @type {MessageEvent} */ (event).data);
+				if (payload.status === 'completed') {
+					tournamentStatus = 'completed';
+					es.close();
+					liveStreamState = 'closed';
+					invalidateAll();
+				}
+			} catch {
+				// ignore
+			}
+		});
+
+		es.onopen = () => {
+			liveStreamState = 'live';
+		};
+
+		es.onerror = () => {
+			liveStreamState = 'reconnecting';
+		};
+
+		return () => {
+			es.close();
+		};
 	});
 
 	$effect(() => {
@@ -238,7 +335,7 @@
 <article class="page stack">
 	<header>
 		<p class="status-row">
-			<span class="status">{data.tournament.status}</span>
+			<span class="status">{tournamentStatus}</span>
 			<span class="modality-badge">
 				{data.tournament.modality === 'otb' ? 'OTB local' : 'Lichess'}
 			</span>
@@ -317,15 +414,21 @@
 						{/if}
 					</div>
 
-					{#if data.lichessLiveError && !live}
-						<p class="hint">{data.lichessLiveError}</p>
+					{#if liveError && !live}
+						<p class="hint">{liveError}</p>
 						{#if countdownSeconds != null && countdownLabel}
 							<p class="countdown fallback-countdown">
 								{countdownLabel}: <strong>{formatCountdown(countdownSeconds)}</strong>
 							</p>
 						{/if}
 					{:else if !live}
-						<p class="empty-players">Live Arena data is unavailable right now.</p>
+						<p class="empty-players">
+							{#if liveStreamState === 'connecting' || liveStreamState === 'reconnecting'}
+								Connecting to live Arena updates…
+							{:else}
+								Live Arena data is unavailable right now.
+							{/if}
+						</p>
 						{#if countdownSeconds != null && countdownLabel}
 							<p class="countdown fallback-countdown">
 								{countdownLabel}: <strong>{formatCountdown(countdownSeconds)}</strong>
@@ -377,6 +480,9 @@
 								>
 									Watch on Lichess
 								</a>
+								{#if live.featured.lastMove}
+									<p class="featured-move">Last move: {live.featured.lastMove}</p>
+								{/if}
 							</div>
 						{/if}
 
@@ -443,8 +549,18 @@
 							</p>
 						{/if}
 
-						{#if shouldPollLive}
-							<p class="live-refresh">Updates every few seconds while this page is open.</p>
+						{#if shouldStreamLive}
+							<p class="live-refresh">
+								{#if liveStreamState === 'live'}
+									Live updates via ChessHub (shared Lichess feed).
+								{:else if liveStreamState === 'reconnecting'}
+									Reconnecting to live updates…
+								{:else if liveStreamState === 'connecting'}
+									Connecting to live updates…
+								{:else}
+									Live updates while this page is open.
+								{/if}
+							</p>
 						{/if}
 					{/if}
 				</section>
@@ -616,14 +732,14 @@
 			<h2 class="section-title">Registration</h2>
 			<p class="fee">{formatFee(data.tournament.entryFeeCents, data.tournament.currency)}</p>
 
-			{#if data.tournament.status === 'draft'}
+			{#if tournamentStatus === 'draft'}
 				<p class="full">
 					This tournament is still a draft. Publish it from the organizer edit page before players can
 					register.
 				</p>
-			{:else if data.tournament.status === 'cancelled'}
+			{:else if tournamentStatus === 'cancelled'}
 				<p class="full">This tournament has been cancelled.</p>
-			{:else if data.tournament.status === 'completed'}
+			{:else if tournamentStatus === 'completed'}
 				<p class="full">Registration is closed.</p>
 			{:else if data.registration?.status === 'paid'}
 				<p class="alert alert-success">You are registered for this tournament.</p>
@@ -829,6 +945,13 @@
 		color: $color-text-muted;
 		font-size: $font-size-xs;
 		text-transform: uppercase;
+	}
+
+	.featured-move {
+		margin: $space-2 0 0;
+		font-size: $font-size-xs;
+		font-variant-numeric: tabular-nums;
+		color: $color-text-muted;
 	}
 
 	.duel-list {

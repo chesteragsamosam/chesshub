@@ -48,7 +48,7 @@ Read the relevant reference file before writing or changing Lichess client code.
 - Arena/Swiss ID normalize, finish check, NDJSON standings, prize match: `src/lib/server/chess/lichess-tournaments.js`
 - ChessHub **creates rated Arenas** for organizers via `POST /api/tournament` (`createLichessArena`); Swiss is still linked by pasting an existing ID. Prize import uses **finished** public Arena/Swiss standings.
 - Private Arenas use a server-only password **and** a managed `conditions.allowList` of registered players (`syncChessHubTournamentAllowList`).
-- Public tournament pages poll `fetchLichessArenaLive` (`GET /api/tournament/{id}`) for countdown, standings, duels, and featured games.
+- Public tournament pages use `arena-live-hub` + SSE (`/api/tournaments/{id}/live`) so many viewers share one Lichess poll; featured games may stream via `/api/stream/game/{id}`.
 
 ## Official resources
 

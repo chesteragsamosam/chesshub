@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto';
 
 const LICHESS_API = 'https://lichess.org/api';
-const LICHESS_USER_AGENT = 'ChessHub/1.0 (tournament platform)';
+export const LICHESS_USER_AGENT = 'ChessHub/1.0 (tournament platform)';
 
 /** @type {readonly number[]} */
 export const LICHESS_ARENA_CLOCK_TIMES = [

@@ -9,6 +9,8 @@
 
 Helpers: `src/lib/server/chess/lichess-tournaments.js` (`createLichessArena`, `buildChessHubArenaDescription`, `fetchLichessArenaLive`, standings, matching).
 
+Live public pages use `arena-live-hub.js`: **one shared Lichess poller per Arena** fans out over **SSE** (`GET /api/tournaments/{id}/live`). Featured games optionally stream moves via `GET /api/stream/game/{id}` (3-move delay on Lichess). When the Arena is **finished**, ChessHub auto-sets linked **published** tournaments to `completed` (prizes are still finalized separately by the organizer).
+
 On create, ChessHub pre-generates the tournament id and sets the Lichess Arena **description** to instructions + the public ChessHub join URL (`/tournaments/{id}`).
 
 Arenas are **password-protected** (server-only password + per-player entry codes) and use Lichess **`conditions.allowList`**: seeded with the organizer, then expanded to paid ChessHub registrants who have a linked Lichess account. Sync happens on paid registration and again before **Join Lichess Arena**, so the password alone is not enough to join outside ChessHub.

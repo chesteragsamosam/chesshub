@@ -663,6 +663,34 @@ export async function updateTournament(id, data) {
 }
 
 /**
+ * When a Lichess Arena finishes, mark linked published ChessHub events as completed.
+ * Does not finalize prizes (`resultsFinalizedAt` stays null until the organizer imports standings).
+ * @param {string} lichessTournamentId
+ * @returns {Promise<number>} number of rows updated
+ */
+export async function markPublishedTournamentsCompletedForLichessArena(lichessTournamentId) {
+	const id = lichessTournamentId.trim();
+	if (!id) return 0;
+
+	const result = await db
+		.update(tournament)
+		.set({ status: 'completed' })
+		.where(
+			and(
+				eq(tournament.lichessTournamentId, id),
+				eq(tournament.lichessTournamentFormat, 'arena'),
+				eq(tournament.status, 'published')
+			)
+		);
+
+	return (
+		/** @type {any} */ (result)?.[0]?.affectedRows ??
+		/** @type {any} */ (result)?.affectedRows ??
+		0
+	);
+}
+
+/**
  * @param {string} tournamentId
  */
 export async function listTournamentPrizes(tournamentId) {
