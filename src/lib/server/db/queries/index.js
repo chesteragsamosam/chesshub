@@ -22,11 +22,7 @@ import { createId } from '$lib/server/id';
  */
 export function toPublicTournament(row) {
 	if (!row) return null;
-	const {
-		lichessArenaPassword: _secret,
-		lichessArenaSettings: _settings,
-		...publicRow
-	} = row;
+	const { lichessArenaPassword: _secret, lichessArenaSettings: _settings, ...publicRow } = row;
 	return publicRow;
 }
 
@@ -220,6 +216,14 @@ export async function updateUserImage(userId, image) {
  */
 export async function updateUsername(userId, username) {
 	await db.update(user).set({ username }).where(eq(user.id, userId));
+}
+
+/**
+ * @param {string} userId
+ * @param {string} name
+ */
+export async function updateUserName(userId, name) {
+	await db.update(user).set({ name }).where(eq(user.id, userId));
 }
 
 /**
@@ -684,9 +688,7 @@ export async function markPublishedTournamentsCompletedForLichessArena(lichessTo
 		);
 
 	return (
-		/** @type {any} */ (result)?.[0]?.affectedRows ??
-		/** @type {any} */ (result)?.affectedRows ??
-		0
+		/** @type {any} */ (result)?.[0]?.affectedRows ?? /** @type {any} */ (result)?.affectedRows ?? 0
 	);
 }
 

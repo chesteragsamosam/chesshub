@@ -13,6 +13,7 @@
 				? (form?.message ?? null)
 				: null
 	);
+	const hasSocial = $derived(data.socialProviders.google || data.socialProviders.facebook);
 </script>
 
 <div class="page-narrow stack">
@@ -21,11 +22,13 @@
 		<p class="page-lede">Join ChessHub to link profiles and find tournaments.</p>
 	</header>
 
-	<form method="post" use:enhance class="panel form">
-		<label class="field">
-			Name
-			<input type="text" name="name" value={form?.name ?? ''} required />
-		</label>
+	<SocialLoginButtons providers={data.socialProviders} errorMessage={socialError} />
+
+	{#if hasSocial}
+		<p class="divider"><span>or sign up with email</span></p>
+	{/if}
+
+	<form method="post" use:enhance class="form">
 		<label class="field">
 			Email
 			<input type="email" name="email" value={form?.email ?? ''} required />
@@ -37,10 +40,8 @@
 		{#if emailFormError}
 			<p class="alert alert-error">{emailFormError}</p>
 		{/if}
-		<button type="submit" class="btn btn-primary btn-block">Register</button>
+		<button type="submit" class="btn btn-secondary btn-block">Create account</button>
 	</form>
-
-	<SocialLoginButtons providers={data.socialProviders} errorMessage={socialError} />
 
 	<p class="footer">
 		Already have an account?
@@ -61,6 +62,27 @@
 		display: flex;
 		flex-direction: column;
 		gap: $space-4;
+	}
+
+	.divider {
+		display: flex;
+		align-items: center;
+		gap: $space-3;
+		margin: 0;
+		font-size: $font-size-sm;
+		color: $color-text-muted;
+
+		&::before,
+		&::after {
+			content: '';
+			flex: 1;
+			height: 1px;
+			background: $color-border;
+		}
+
+		span {
+			flex-shrink: 0;
+		}
 	}
 
 	.footer {

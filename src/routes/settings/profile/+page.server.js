@@ -15,6 +15,7 @@ import {
 	updateUserImage,
 	getUserById,
 	updateUsername,
+	updateUserName,
 	isUsernameTaken
 } from '$lib/server/db/queries';
 import { deleteAvatarFile, isLocalAvatarUrl, saveAvatarUpload } from '$lib/server/avatars';
@@ -74,6 +75,20 @@ export const actions = {
 		});
 
 		return { profileSuccess: true };
+	},
+
+	updateName: async (event) => {
+		const current = requireUser(event);
+		const formData = await event.request.formData();
+		const raw = formData.get('name')?.toString() ?? '';
+		const name = raw.trim().slice(0, 255);
+
+		if (!name) {
+			return fail(400, { nameMessage: 'Display name is required', nameValue: raw });
+		}
+
+		await updateUserName(current.id, name);
+		return { nameSuccess: true };
 	},
 
 	updateUsername: async (event) => {
