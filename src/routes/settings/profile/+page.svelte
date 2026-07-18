@@ -14,9 +14,7 @@
 
 	const profileUrl = $derived(`${$page.url.origin}/profile/${data.profileSlug}`);
 	const displayImage = $derived(previewUrl ?? data.user?.image ?? null);
-	const externalImage = $derived(
-		data.user ? externalImageUrl(data.user.image, data.user.id) : ''
-	);
+	const externalImage = $derived(data.user ? externalImageUrl(data.user.image, data.user.id) : '');
 	const hasUploadedAvatar = $derived(
 		Boolean(data.user?.image && isLocalAvatarUrl(data.user.image, data.user.id))
 	);
@@ -93,6 +91,32 @@
 
 	<section class="panel stack-sm">
 		<div>
+			<h2 class="section-title">Display name</h2>
+			<p class="page-lede">Shown on your public profile and in tournament lists.</p>
+		</div>
+		<form method="post" action="?/updateName" use:enhance class="stack-sm">
+			<label class="field">
+				Display name
+				<input
+					type="text"
+					name="name"
+					required
+					maxlength="255"
+					value={form?.nameValue ?? data.user?.name ?? ''}
+				/>
+			</label>
+			{#if form?.nameMessage}
+				<p class="alert alert-error">{form.nameMessage}</p>
+			{/if}
+			{#if form?.nameSuccess}
+				<p class="alert alert-success">Display name saved.</p>
+			{/if}
+			<button type="submit" class="btn btn-primary">Save display name</button>
+		</form>
+	</section>
+
+	<section class="panel stack-sm">
+		<div>
 			<h2 class="section-title">Username</h2>
 			<p class="page-lede">Your shareable profile link uses this username.</p>
 		</div>
@@ -164,7 +188,9 @@
 					/>
 				</label>
 				{#if hasUploadedAvatar}
-					<p class="hint">You have an uploaded photo saved. Choose a new file or URL to replace it.</p>
+					<p class="hint">
+						You have an uploaded photo saved. Choose a new file or URL to replace it.
+					</p>
 				{/if}
 				<p class="hint">Link Chess.com and your avatar can import automatically.</p>
 				{#if form?.photoMessage}

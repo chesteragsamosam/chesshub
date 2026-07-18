@@ -3,6 +3,19 @@ import { auth } from '$lib/server/auth';
 import { APIError } from 'better-auth/api';
 import { getEnabledSocialProviders, startSocialSignIn } from '$lib/server/auth-social';
 
+/**
+ * @param {string} email
+ */
+function placeholderNameFromEmail(email) {
+	const local = email.split('@')[0]?.trim() ?? '';
+	const cleaned = local
+		.replace(/[^a-zA-Z0-9._ -]/g, '')
+		.replace(/[._-]+/g, ' ')
+		.trim();
+	if (!cleaned) return 'Player';
+	return cleaned.slice(0, 255);
+}
+
 /** @type {import('./$types').PageServerLoad} */
 export const load = (event) => {
 	if (event.locals.user) {
@@ -21,11 +34,12 @@ export const actions = {
 		const formData = await event.request.formData();
 		const email = formData.get('email')?.toString() ?? '';
 		const password = formData.get('password')?.toString() ?? '';
-		const name = formData.get('name')?.toString() ?? '';
 
-		if (!email || !password || !name) {
-			return fail(400, { message: 'Name, email, and password are required', email, name });
+		if (!email || !password) {
+			return fail(400, { message: 'Email and password are required', email });
 		}
+
+		const name = placeholderNameFromEmail(email);
 
 		try {
 			await auth.api.signUpEmail({
@@ -38,9 +52,9 @@ export const actions = {
 			});
 		} catch (error) {
 			if (error instanceof APIError) {
-				return fail(400, { message: error.message || 'Registration failed', email, name });
+				return fail(400, { message: error.message || 'Registration failed', email });
 			}
-			return fail(500, { message: 'Unexpected error', email, name });
+			return fail(500, { message: 'Unexpected error', email });
 		}
 
 		redirect(302, '/');
