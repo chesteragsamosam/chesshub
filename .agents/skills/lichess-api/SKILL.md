@@ -4,7 +4,7 @@ description: >-
   Guides Lichess.org API integration: base URL, rate limits, NDJSON streams,
   OAuth2 PKCE and personal tokens, scopes, Arena/Swiss tournaments, users,
   games, teams, challenges, and bulk pairings. Use when building, modifying,
-  or reviewing any Lichess integration — OAuth login, fetching ratings,
+  or reviewing any Lichess integration — OAuth account linking, fetching ratings,
   importing tournament standings, creating arenas/swiss events, Board/Bot
   play, or calling https://lichess.org/api endpoints. Source of truth:
   `Lichessorg API reference.json` (OpenAPI 2.0.153).
