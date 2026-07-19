@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { lookupFidePlayer } from './fide';
+import { fideNameMatchesChessHub, lookupFidePlayer } from './fide';
 
 describe('lookupFidePlayer', () => {
 	afterEach(() => {
@@ -39,6 +39,7 @@ describe('lookupFidePlayer', () => {
 			ok: true,
 			username: '5200016',
 			externalId: '5200016',
+			name: 'Torre, Eugenio',
 			displayName: 'GM Torre, Eugenio',
 			federation: 'PHI',
 			title: 'GM',
@@ -71,5 +72,22 @@ describe('lookupFidePlayer', () => {
 			ok: false,
 			error: 'We couldn’t find that FIDE ID. Check the number and try again.'
 		});
+	});
+});
+
+describe('fideNameMatchesChessHub', () => {
+	it('matches reordered “Last, First” vs “First Last”', () => {
+		expect(fideNameMatchesChessHub('Torre, Eugenio', 'Eugenio Torre')).toBe(true);
+		expect(fideNameMatchesChessHub('Carlsen, Magnus', 'GM Magnus Carlsen')).toBe(true);
+	});
+
+	it('rejects unrelated names and empty ChessHub names', () => {
+		expect(fideNameMatchesChessHub('Carlsen, Magnus', 'Hikaru Nakamura')).toBe(false);
+		expect(fideNameMatchesChessHub('Torre, Eugenio', '')).toBe(false);
+		expect(fideNameMatchesChessHub('Torre, Eugenio', null)).toBe(false);
+	});
+
+	it('allows a majority token overlap', () => {
+		expect(fideNameMatchesChessHub('dela Cruz, Juan Miguel', 'Juan Cruz')).toBe(true);
 	});
 });

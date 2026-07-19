@@ -50,6 +50,8 @@ export const chessAccount = mysqlTable(
 	},
 	(table) => [
 		uniqueIndex('chess_account_user_platform_idx').on(table.userId, table.platform),
+		/** One ChessHub account per platform username / FIDE ID */
+		uniqueIndex('chess_account_platform_username_idx').on(table.platform, table.username),
 		index('chess_account_user_idx').on(table.userId),
 		index('chess_account_federation_idx').on(table.federation)
 	]
@@ -111,6 +113,11 @@ export const tournament = mysqlTable(
 		endDate: timestamp('end_date', { fsp: 3 }),
 		entryFeeCents: int('entry_fee_cents').default(0).notNull(),
 		currency: varchar('currency', { length: 3 }).default('php').notNull(),
+		/**
+		 * When true, players pay the organizer directly (offline). Registration stays
+		 * pending until the organizer approves and marks them paid.
+		 */
+		directPaymentToOrganizer: boolean('direct_payment_to_organizer').default(false).notNull(),
 		maxPlayers: int('max_players'),
 		/** Initial clock in minutes (Lichess + OTB). */
 		clockTime: double('clock_time'),
@@ -253,6 +260,38 @@ export const tournamentRegistration = mysqlTable(
 	(table) => [
 		uniqueIndex('tournament_registration_unique_idx').on(table.tournamentId, table.userId),
 		index('tournament_registration_tournament_idx').on(table.tournamentId)
+	]
+);
+
+/** One-time platform donations (Support ChessHub). */
+export const donation = mysqlTable(
+	'donation',
+	{
+		id: varchar('id', { length: 36 }).primaryKey(),
+		userId: varchar('user_id', { length: 36 }),
+		amountCents: int('amount_cents').notNull(),
+		currency: varchar('currency', { length: 3 }).default('php').notNull(),
+		status: mysqlEnum('status', ['pending', 'paid', 'failed', 'expired'])
+			.default('pending')
+			.notNull(),
+		paymongoCheckoutSessionId: varchar('paymongo_checkout_session_id', { length: 255 }),
+		paymongoPaymentId: varchar('paymongo_payment_id', { length: 255 }),
+		donorName: varchar('donor_name', { length: 255 }),
+		donorEmail: varchar('donor_email', { length: 255 }),
+		message: text('message'),
+		listPublic: boolean('list_public').default(false).notNull(),
+		publicName: varchar('public_name', { length: 255 }),
+		paidAt: timestamp('paid_at', { fsp: 3 }),
+		createdAt: timestamp('created_at', { fsp: 3 }).defaultNow().notNull(),
+		updatedAt: timestamp('updated_at', { fsp: 3 })
+			.defaultNow()
+			.$onUpdate(() => new Date())
+			.notNull()
+	},
+	(table) => [
+		index('donation_status_idx').on(table.status),
+		index('donation_checkout_session_idx').on(table.paymongoCheckoutSessionId),
+		index('donation_list_public_idx').on(table.listPublic, table.status)
 	]
 );
 

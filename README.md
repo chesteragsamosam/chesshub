@@ -39,10 +39,15 @@ node --env-file=.env scripts/migrate-social-facebook.mjs
 pnpm db:migrate-facebook-deletion
 # If adding FIDE federation/title columns on chess_account:
 pnpm db:migrate-chess-account-fide
+# If enforcing one account per platform username / FIDE ID:
+pnpm db:migrate-chess-account-platform-username
+# (If that fails on duplicates: node --env-file=.env scripts/dedupe-chess-account-platform-username.mjs)
 # If adding cached ratings columns on chess_account:
 pnpm db:migrate-chess-account-ratings
 # If adding optional tournament sponsors:
 pnpm db:migrate-tournament-sponsors
+# If adding platform donations / supporters list:
+pnpm db:migrate-donations
 ```
 
 3. Run the app:
@@ -51,7 +56,7 @@ pnpm db:migrate-tournament-sponsors
 pnpm dev
 ```
 
-FIDE account linking uses Lichess’s public FIDE mirror (`GET /api/fide/player/{id}`), not HTML scraping. Philippine top-rated on `/players?fideFed=PHI` ranks ChessHub users with a linked FIDE account whose federation is `PHI`.
+FIDE account linking uses Lichess’s public FIDE mirror (`GET /api/fide/player/{id}`), not HTML scraping. Each FIDE ID can only be linked to one ChessHub account. If the FIDE name doesn’t roughly match the user’s ChessHub display name, they must confirm ownership before linking (self-attested — FIDE has no OAuth proof). Philippine top-rated on `/players?fideFed=PHI` ranks ChessHub users with a linked FIDE account whose federation is `PHI`.
 
 Ratings are cached on `chess_account` and refreshed when stale: **Lichess / Chess.com daily**, **FIDE monthly**.
 
@@ -164,7 +169,7 @@ UPDATE user SET role = 'admin' WHERE email = 'you@example.com';
 
 ## PayMongo (paid tournaments)
 
-Entry fees use PayMongo Hosted Checkout with **GCash**, **QR Ph**, and **PHP** only. ChessHub is the merchant of record.
+Entry fees use PayMongo Hosted Checkout with **GCash**, **QR Ph**, and **PHP** only. ChessHub is the merchant of record. The same Checkout stack powers optional **platform donations** at `/donate` (supporters list at `/supporters`).
 
 1. Create a PayMongo account and complete KYC.
 2. Copy your secret key (`sk_test_…` or `sk_live_…`) into `PAYMONGO_SECRET_KEY`.

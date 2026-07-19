@@ -655,6 +655,20 @@
 				Max players (optional)
 				<input type="number" name="maxPlayers" min="1" value={form?.maxPlayers ?? ''} />
 			</label>
+			<label class="check span-2">
+				<input
+					type="checkbox"
+					name="directPaymentToOrganizer"
+					checked={Boolean(form?.directPaymentToOrganizer)}
+				/>
+				<span>
+					Accept direct payment to organizer
+					<span class="hint">
+						Players request to join; you approve after confirming they paid you offline. No online
+						checkout.
+					</span>
+				</span>
+			</label>
 		</div>
 
 		<section class="prizes-optional stack-sm">
@@ -742,7 +756,7 @@
 				Publish immediately
 				<span class="hint">(required before players can register)</span>
 				{#if !data.paymongoConfigured}
-					<span class="hint">(paid events require PayMongo)</span>
+					<span class="hint">(online paid events require PayMongo, or use direct payment)</span>
 				{/if}
 			</span>
 		</label>

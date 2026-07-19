@@ -1,7 +1,7 @@
 import { fail } from '@sveltejs/kit';
 import { requireUser } from '$lib/server/auth-guards';
 import { validateChessComUsername } from '$lib/server/chess/chesscom';
-import { lookupFidePlayer } from '$lib/server/chess/fide';
+import { fideNameMatchesChessHub, lookupFidePlayer } from '$lib/server/chess/fide';
 import { enrichChessAccountsWithRatings, publicChessAccounts } from '$lib/server/chess/enrich';
 import {
 	getOrCreateProfile,
@@ -10,6 +10,7 @@ import {
 	updateProfile,
 	upsertChessAccount,
 	unlinkChessAccount,
+	findChessAccountByPlatformUsername,
 	upsertSocialLink,
 	unlinkSocialLink,
 	updateUserImage,
@@ -199,10 +200,31 @@ export const actions = {
 		const user = requireUser(event);
 		const formData = await event.request.formData();
 		const fideId = formData.get('fideId')?.toString() ?? '';
+		const confirmed =
+			formData.get('confirmFideName') === '1' || formData.get('confirmFideName') === 'on';
 
 		const result = await lookupFidePlayer(fideId);
 		if (!result.ok) {
 			return fail(400, { fideMessage: result.error });
+		}
+
+		const claimed = await findChessAccountByPlatformUsername('fide', result.username);
+		if (claimed && claimed.userId !== user.id) {
+			return fail(400, {
+				fideMessage: 'That FIDE ID is already linked to another ChessHub account.'
+			});
+		}
+
+		const dbUser = await getUserById(user.id);
+		const nameMatches = fideNameMatchesChessHub(result.name, dbUser?.name);
+		if (!nameMatches && !confirmed) {
+			return fail(400, {
+				fideNeedsConfirm: true,
+				fideId: result.username,
+				fideDisplayName: result.displayName,
+				fideFederation: result.federation,
+				fideMessage: `This FIDE profile is listed as “${result.displayName}”. Confirm it’s yours to continue.`
+			});
 		}
 
 		await upsertChessAccount(user.id, 'fide', {
@@ -213,7 +235,8 @@ export const actions = {
 			title: result.title,
 			rating: result.rating,
 			ratings: result.ratings,
-			verified: true
+			// Self-attested only — FIDE has no OAuth ownership proof.
+			verified: false
 		});
 
 		return { fideSuccess: true };

@@ -83,6 +83,7 @@
 	}
 
 	const isPaid = $derived(data.tournament.entryFeeCents > 0);
+	const directPayment = $derived(Boolean(data.tournament.directPaymentToOrganizer));
 	const isLichessArena = $derived(
 		data.tournament.modality === 'lichess' &&
 			data.tournament.lichessTournamentFormat === 'arena' &&
@@ -135,6 +136,7 @@
 
 	const shouldPollCheckout = $derived(
 		isPaid &&
+			!directPayment &&
 			(data.registration?.status === 'pending' ||
 				data.checkoutOutcome === 'confirming' ||
 				Boolean(checkoutUrl))
@@ -308,7 +310,7 @@
 		checkoutUrl = '';
 		// Open the tab synchronously (in the click handler) so the browser
 		// does not block the popup. We set its URL once the server responds.
-		const checkoutTab = isPaid ? window.open('', '_blank') : null;
+		const checkoutTab = isPaid && !directPayment ? window.open('', '_blank') : null;
 
 		return async (
 			/** @type {{ result: any, update: () => Promise<void> }} */ { result, update }
@@ -639,7 +641,12 @@
 					{/if}
 					<div>
 						<dt>Entry fee</dt>
-						<dd>{formatFee(data.tournament.entryFeeCents, data.tournament.currency)}</dd>
+						<dd>
+							{formatFee(data.tournament.entryFeeCents, data.tournament.currency)}
+							{#if directPayment}
+								<span class="fee-note"> · Pay organizer directly</span>
+							{/if}
+						</dd>
 					</div>
 					<div>
 						<dt>Registered</dt>
@@ -796,6 +803,23 @@
 		<aside class="panel register">
 			<h2 class="section-title">Registration</h2>
 			<p class="fee">{formatFee(data.tournament.entryFeeCents, data.tournament.currency)}</p>
+			{#if directPayment && isPaid}
+				<p class="hint">
+					Pay the organizer directly. Request to join, then wait for approval after your payment is
+					confirmed.
+				</p>
+			{/if}
+
+			{#if data.isOrganizer}
+				<p class="hint">
+					<a
+						href={resolve(`/organizer/tournaments/${data.tournament.id}/registrations`)}
+						class="link"
+					>
+						Manage registrations
+					</a>
+				</p>
+			{/if}
 
 			{#if tournamentStatus === 'draft'}
 				<p class="full">
@@ -832,12 +856,16 @@
 						<p class="hint">Link your Lichess account, then join the Arena from ChessHub.</p>
 					{/if}
 				{/if}
+			{:else if directPayment && data.registration?.status === 'pending'}
+				<p class="alert alert-warning">
+					Join request sent. The organizer will approve you after confirming your payment.
+				</p>
 			{:else if data.spotsLeft === 0}
 				<p class="full">This tournament is full.</p>
 			{:else if !data.user}
 				<a href={resolve('/login')} class="btn btn-primary btn-block">Sign in to register</a>
 			{:else}
-				{#if data.checkoutNotice && (data.checkoutNotice.tone === 'error' || data.checkoutNotice.tone === 'warning') && data.registration?.status === 'pending'}
+				{#if !directPayment && data.checkoutNotice && (data.checkoutNotice.tone === 'error' || data.checkoutNotice.tone === 'warning') && data.registration?.status === 'pending'}
 					<p
 						class="alert"
 						class:alert-warning={data.checkoutNotice.tone === 'warning'}
@@ -849,7 +877,13 @@
 				{/if}
 				<form method="post" action="?/register" use:enhance={submitRegister}>
 					<button type="submit" class="btn btn-primary btn-block" disabled={submitting}>
-						{#if isPaid}
+						{#if directPayment}
+							{#if submitting}
+								Sending request…
+							{:else}
+								Request to join
+							{/if}
+						{:else if isPaid}
 							{#if submitting}
 								Starting checkout…
 							{:else if data.checkoutOutcome === 'failed' || data.checkoutOutcome === 'expired'}
@@ -864,7 +898,7 @@
 						{/if}
 					</button>
 				</form>
-				{#if isPaid && (checkoutUrl || data.registration?.status === 'pending')}
+				{#if !directPayment && isPaid && (checkoutUrl || data.registration?.status === 'pending')}
 					<p class="hint">
 						{#if data.checkoutOutcome === 'failed' || data.checkoutOutcome === 'expired'}
 							Start a new GCash or QR Ph payment when you are ready.
@@ -879,7 +913,7 @@
 						{/if}
 					</p>
 				{/if}
-				{#if isPaid && !data.paymongoConfigured}
+				{#if !directPayment && isPaid && !data.paymongoConfigured}
 					<p class="hint">Online payments aren’t available for this event yet.</p>
 				{/if}
 			{/if}
@@ -1244,6 +1278,14 @@
 		font-size: $font-size-3xl;
 		font-weight: $font-weight-bold;
 		letter-spacing: $letter-spacing-tight;
+	}
+
+	.fee-note {
+		font-family: $font-sans;
+		font-size: $font-size-sm;
+		font-weight: $font-weight-medium;
+		letter-spacing: normal;
+		color: $color-text-muted;
 	}
 
 	.full {

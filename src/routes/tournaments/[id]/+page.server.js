@@ -4,6 +4,7 @@ import {
 	getUserById,
 	getRegistration,
 	countPaidRegistrations,
+	countOccupiedRegistrations,
 	listPaidRegistrations,
 	listTournamentPrizes,
 	listTournamentSponsors,
@@ -78,6 +79,7 @@ export async function load(event) {
 	// Always inspect a pending checkout session (not only when ?checkout= is present).
 	// Checkout opens in a new tab, so the original page usually has no query param.
 	if (
+		!tournament.directPaymentToOrganizer &&
 		registration?.paymongoCheckoutSessionId &&
 		isPaymongoConfigured() &&
 		registration.status === 'pending'
@@ -166,6 +168,7 @@ export async function load(event) {
 	const [
 		organizer,
 		paidCount,
+		occupiedCount,
 		registeredPlayers,
 		prizes,
 		sponsors,
@@ -175,6 +178,9 @@ export async function load(event) {
 	] = await Promise.all([
 		getUserById(tournament.organizerId),
 		countPaidRegistrations(tournament.id),
+		tournament.directPaymentToOrganizer
+			? countOccupiedRegistrations(tournament.id)
+			: Promise.resolve(null),
 		listPaidRegistrations(tournament.id),
 		listTournamentPrizes(tournament.id),
 		listTournamentSponsors(tournament.id),
@@ -217,6 +223,9 @@ export async function load(event) {
 	const joinable = canJoinLichessArena(tournamentRow);
 	const hasLinkedLichess = Boolean(lichessAccount?.verified && lichessAccount.accessToken);
 
+	const capacityUsed =
+		tournamentRow.directPaymentToOrganizer && occupiedCount != null ? occupiedCount : paidCount;
+
 	return {
 		tournament: toPublicTournament(tournamentRow),
 		organizer: organizer
@@ -238,7 +247,11 @@ export async function load(event) {
 			paidAt: player.paidAt
 		})),
 		spotsLeft:
-			tournamentRow.maxPlayers != null ? Math.max(0, tournamentRow.maxPlayers - paidCount) : null,
+			tournamentRow.maxPlayers != null
+				? Math.max(0, tournamentRow.maxPlayers - capacityUsed)
+				: null,
+		isOrganizer:
+			event.locals.user?.id === tournamentRow.organizerId || event.locals.user?.role === 'admin',
 		paymongoConfigured: isPaymongoConfigured(),
 		disbursementsConfigured: isPaymongoDisbursementConfigured(),
 		googleMapsApiKey: publicEnv.PUBLIC_GOOGLE_MAPS_API_KEY?.trim() || '',
@@ -281,9 +294,16 @@ export const actions = {
 		if (existing?.status === 'paid') {
 			return fail(400, { message: 'You are already registered for this tournament' });
 		}
+		if (tournament.directPaymentToOrganizer && existing?.status === 'pending') {
+			return fail(400, {
+				message: 'Your join request is awaiting organizer approval.'
+			});
+		}
 
-		const paidCount = await countPaidRegistrations(tournament.id);
-		if (tournament.maxPlayers != null && paidCount >= tournament.maxPlayers) {
+		const capacityUsed = tournament.directPaymentToOrganizer
+			? await countOccupiedRegistrations(tournament.id)
+			: await countPaidRegistrations(tournament.id);
+		if (tournament.maxPlayers != null && capacityUsed >= tournament.maxPlayers) {
 			return fail(400, { message: 'This tournament is full' });
 		}
 
@@ -304,6 +324,24 @@ export const actions = {
 			}
 			await syncChessHubTournamentAllowList(tournament).catch(() => null);
 			return { success: true, free: true };
+		}
+
+		// Direct payment to organizer — request join; organizer marks paid after confirming payment
+		if (tournament.directPaymentToOrganizer) {
+			if (!existing) {
+				const reg = await createRegistration(tournament.id, user.id);
+				if (!reg) {
+					return fail(500, { message: 'Could not create registration request' });
+				}
+			} else if (existing.status === 'cancelled' || existing.status === 'refunded') {
+				await updateRegistration(existing.id, {
+					status: 'pending',
+					paidAt: null,
+					paymongoCheckoutSessionId: null,
+					paymongoPaymentId: null
+				});
+			}
+			return { success: true, awaitingApproval: true };
 		}
 
 		if (!isPaymongoConfigured()) {

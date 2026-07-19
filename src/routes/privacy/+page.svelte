@@ -82,9 +82,14 @@
 			</li>
 			<li>
 				<strong>Payment data</strong> — ChessHub does not store full card or wallet credentials.
-				Paid registration and prize disbursements are processed by PayMongo. We store payment
-				references needed to confirm registration or payout status (for example checkout session or
-				transfer identifiers).
+				Paid registration, prize disbursements, and optional platform donations are processed by
+				PayMongo. We store payment references needed to confirm registration, payout, or donation
+				status (for example checkout session or transfer identifiers).
+			</li>
+			<li>
+				<strong>Donations</strong> — if you donate to ChessHub, we store the amount, payment status,
+				optional private note, and (only if you opt in) the display name you choose for the public
+				supporters page. Names appear publicly only with that consent.
 			</li>
 			<li>
 				<strong>Organizer applications</strong> — messages and status related to requests for
@@ -108,6 +113,7 @@
 				registered players.
 			</li>
 			<li>Process tournament registration, entry fees, and eligible prize claims.</li>
+			<li>Process optional donations that support ChessHub operations.</li>
 			<li>Review organizer applications and administer the platform.</li>
 			<li>Prevent abuse, debug issues, and improve reliability and security.</li>
 			<li>Comply with legal obligations when required.</li>
@@ -121,7 +127,8 @@
 			<li>
 				<strong>Public profile content</strong> — username, display name, avatar, bio, location you
 				choose to publish, linked chess usernames, social links, and tournament participation that
-				the product surfaces publicly.
+				the product surfaces publicly. Donor display names appear on the supporters page only when
+				you opt in while donating.
 			</li>
 			<li>
 				<strong>Tournament organizers and players</strong> — registration and standings-related
@@ -170,6 +177,11 @@
 			</li>
 			<li>Disconnect Google, Meta, or Lichess access through those providers and/or ChessHub settings where available.</li>
 			<li>Choose what optional profile fields and social links you publish.</li>
+			<li>
+				Choose whether your donation display name appears on the
+				<a href={resolve('/supporters')} class="link">supporters page</a>
+				(opt-in at checkout only).
+			</li>
 			<li>
 				Request deletion of Facebook-linked data or review instructions at
 				<a href={resolve('/data-deletion')} class="link">User data deletion</a>.

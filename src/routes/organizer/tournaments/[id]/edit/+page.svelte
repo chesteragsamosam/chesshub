@@ -26,6 +26,9 @@
 			<p class="page-lede">{data.tournament.title}</p>
 		</div>
 		<div class="header-links">
+			<a href={resolve(`/organizer/tournaments/${data.tournament.id}/registrations`)} class="link">
+				Registrations
+			</a>
 			<a href={resolve(`/organizer/tournaments/${data.tournament.id}/prizes`)} class="link">
 				Manage prizes
 			</a>
@@ -241,6 +244,20 @@
 					</option>
 				</select>
 			</label>
+			<label class="check span-2">
+				<input
+					type="checkbox"
+					name="directPaymentToOrganizer"
+					checked={Boolean(data.tournament.directPaymentToOrganizer)}
+				/>
+				<span>
+					Accept direct payment to organizer
+					<span class="hint">
+						Players request to join; you approve after confirming they paid you offline. No online
+						checkout.
+					</span>
+				</span>
+			</label>
 		</div>
 
 		<SponsorListEditor initial={data.sponsors} open={data.sponsors.length > 0} />
@@ -363,6 +380,17 @@
 		@media (min-width: $breakpoint-sm) {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
+	}
+
+	.span-2 {
+		grid-column: 1 / -1;
+	}
+
+	.check {
+		display: flex;
+		align-items: flex-start;
+		gap: $space-2;
+		font-size: $font-size-sm;
 	}
 
 	.venue-section {

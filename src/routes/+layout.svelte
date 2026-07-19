@@ -96,7 +96,9 @@
 	<footer class="site-footer">
 		<div class="footer-inner">
 			<p class="footer-brand">ChessHub</p>
-			<nav class="footer-links" aria-label="Legal">
+			<nav class="footer-links" aria-label="Site">
+				<a href={resolve('/donate')}>Support ChessHub</a>
+				<a href={resolve('/supporters')}>Supporters</a>
 				<a href={resolve('/privacy')}>Privacy Policy</a>
 				<a href={resolve('/data-deletion')}>Data deletion</a>
 			</nav>

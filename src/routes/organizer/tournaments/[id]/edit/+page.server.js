@@ -62,6 +62,7 @@ export const actions = {
 		const endDateRaw = formData.get('endDate')?.toString() ?? '';
 		const entryFee = Number(formData.get('entryFee')?.toString() ?? '0');
 		const currency = (formData.get('currency')?.toString() || 'php').toLowerCase();
+		const directPaymentToOrganizer = formData.get('directPaymentToOrganizer') === 'on';
 		const maxPlayersRaw = formData.get('maxPlayers')?.toString() ?? '';
 		const status = formData.get('status')?.toString() ?? 'draft';
 		const modalityRaw = formData.get('modality')?.toString() ?? tournament.modality;
@@ -136,6 +137,12 @@ export const actions = {
 			return fail(400, { message: 'Invalid entry fee' });
 		}
 
+		if (directPaymentToOrganizer && entryFeeCents <= 0) {
+			return fail(400, {
+				message: 'Set an entry fee when accepting direct payment to the organizer.'
+			});
+		}
+
 		if (currency !== 'php') {
 			return fail(400, { message: 'Currency must be PHP for GCash or QR Ph payments' });
 		}
@@ -144,10 +151,15 @@ export const actions = {
 			return fail(400, { message: 'Invalid status' });
 		}
 
-		if (status === 'published' && entryFeeCents > 0 && !isPaymongoConfigured()) {
+		if (
+			status === 'published' &&
+			entryFeeCents > 0 &&
+			!directPaymentToOrganizer &&
+			!isPaymongoConfigured()
+		) {
 			return fail(400, {
 				message:
-					'Paid registrations aren’t available yet. Contact the site admin to enable payments.'
+					'Paid registrations aren’t available yet. Contact the site admin to enable payments, or accept direct payment to the organizer.'
 			});
 		}
 
@@ -172,6 +184,7 @@ export const actions = {
 			endDate,
 			entryFeeCents,
 			currency,
+			directPaymentToOrganizer,
 			maxPlayers: maxPlayers && Number.isFinite(maxPlayers) ? maxPlayers : null,
 			...(modality === 'otb'
 				? { clockTime, clockIncrement, clockDelay }

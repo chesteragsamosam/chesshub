@@ -9,7 +9,9 @@ import {
 	interpretCheckoutSession,
 	readCheckoutOutcomeMarker,
 	toPayerFacingMessage,
-	verifyWebhookSignature
+	verifyWebhookSignature,
+	isDonationCheckoutResource,
+	donationLookupKeys
 } from './paymongo';
 import { createHmac } from 'node:crypto';
 
@@ -209,5 +211,42 @@ describe('checkoutNoticeForOutcome', () => {
 		const expired = checkoutNoticeForOutcome('expired');
 		expect(expired?.title).toMatch(/expired/i);
 		expect(expired?.body).toMatch(/fresh payment|try again|Pay with GCash/i);
+	});
+});
+
+describe('donation checkout helpers', () => {
+	it('detects donation checkout resources via metadata', () => {
+		expect(
+			isDonationCheckoutResource({
+				id: 'cs_donation',
+				attributes: { metadata: { type: 'donation', donationId: 'don-1' } }
+			})
+		).toBe(true);
+		expect(
+			isDonationCheckoutResource({
+				id: 'cs_reg',
+				attributes: { metadata: { registrationId: 'reg-1', tournamentId: 't-1' } }
+			})
+		).toBe(false);
+		expect(isDonationCheckoutResource(null)).toBe(false);
+	});
+
+	it('extracts donation lookup keys from session shape', () => {
+		expect(
+			donationLookupKeys({
+				id: 'cs_abc',
+				attributes: {
+					reference_number: 'don-fallback',
+					metadata: { type: 'donation', donationId: 'don-1' }
+				}
+			})
+		).toEqual({ sessionId: 'cs_abc', donationId: 'don-1' });
+
+		expect(
+			donationLookupKeys({
+				id: 'cs_abc',
+				attributes: { reference_number: 'don-fallback' }
+			})
+		).toEqual({ sessionId: 'cs_abc', donationId: 'don-fallback' });
 	});
 });

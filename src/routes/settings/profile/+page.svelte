@@ -383,13 +383,32 @@
 						</form>
 					</div>
 				{:else}
-					<form method="post" action="?/linkFide" use:enhance class="inline-form">
-						<input type="text" name="fideId" placeholder="e.g. 5200016" required />
-						<button type="submit" class="btn btn-ink">Link</button>
-					</form>
-					<p class="hint">Your number from ratings.fide.com</p>
-					{#if form?.fideMessage}
-						<p class="alert alert-error">{form.fideMessage}</p>
+					{#if form?.fideNeedsConfirm}
+						<form method="post" action="?/linkFide" use:enhance class="fide-confirm">
+							<input type="hidden" name="fideId" value={form.fideId} />
+							<p class="hint">
+								FIDE lists this ID as
+								<strong>{form.fideDisplayName}</strong>
+								{#if form.fideFederation}· {form.fideFederation}{/if}
+							</p>
+							{#if form?.fideMessage}
+								<p class="alert alert-error">{form.fideMessage}</p>
+							{/if}
+							<label class="confirm-row">
+								<input type="checkbox" name="confirmFideName" value="1" required />
+								<span>Yes, this is my FIDE profile</span>
+							</label>
+							<button type="submit" class="btn btn-ink">Confirm and link</button>
+						</form>
+					{:else}
+						<form method="post" action="?/linkFide" use:enhance class="inline-form">
+							<input type="text" name="fideId" placeholder="e.g. 5200016" required />
+							<button type="submit" class="btn btn-ink">Link</button>
+						</form>
+						<p class="hint">Your number from ratings.fide.com — one ChessHub account per FIDE ID.</p>
+						{#if form?.fideMessage}
+							<p class="alert alert-error">{form.fideMessage}</p>
+						{/if}
 					{/if}
 					{#if form?.fideSuccess}
 						<p class="alert alert-success">FIDE profile linked.</p>
@@ -584,6 +603,26 @@
 			font-size: $font-size-sm;
 			color: $color-text;
 			background-color: color-mix(in srgb, $color-bg 45%, $color-surface);
+		}
+	}
+
+	.fide-confirm {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: $space-3;
+		margin-top: $space-3;
+	}
+
+	.confirm-row {
+		display: flex;
+		align-items: flex-start;
+		gap: $space-2;
+		font-size: $font-size-sm;
+		cursor: pointer;
+
+		input {
+			margin-top: 0.2em;
 		}
 	}
 

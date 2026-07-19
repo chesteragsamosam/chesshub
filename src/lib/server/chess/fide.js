@@ -1,5 +1,23 @@
 import { primaryRating } from '$lib/chess-ratings';
 
+/** Common FIDE / national titles stripped before name comparison. */
+const NAME_TITLE_TOKENS = new Set([
+	'gm',
+	'im',
+	'fm',
+	'cm',
+	'wgm',
+	'wim',
+	'wfm',
+	'wcm',
+	'nm',
+	'wnm',
+	'agm',
+	'aim',
+	'afm',
+	'acm'
+]);
+
 /**
  * Look up a FIDE player by ID via Lichess's FIDE mirror
  * (`GET /api/fide/player/{playerId}`).
@@ -49,12 +67,14 @@ export async function lookupFidePlayer(fideId) {
 		};
 
 		const title = typeof data.title === 'string' && data.title.trim() ? data.title.trim() : null;
-		const displayName = title ? `${title} ${data.name}` : data.name;
+		const name = data.name.trim();
+		const displayName = title ? `${title} ${name}` : name;
 
 		return {
 			ok: true,
 			username: String(data.id),
 			externalId: String(data.id),
+			name,
 			displayName,
 			federation: data.federation?.toUpperCase?.() ?? data.federation ?? null,
 			title,
@@ -64,6 +84,41 @@ export async function lookupFidePlayer(fideId) {
 	} catch {
 		return { ok: false, error: 'We couldn’t look up that FIDE profile right now. Try again later.' };
 	}
+}
+
+/**
+ * Soft check: does the FIDE listing look like it could belong to this ChessHub display name?
+ * Handles "Last, First" vs "First Last". Empty ChessHub names never auto-match.
+ * @param {string | null | undefined} fideName raw FIDE name (no title prefix)
+ * @param {string | null | undefined} chessHubName ChessHub display name
+ */
+export function fideNameMatchesChessHub(fideName, chessHubName) {
+	const fideTokens = nameTokens(fideName);
+	const hubTokens = nameTokens(chessHubName);
+	if (fideTokens.length === 0 || hubTokens.length === 0) return false;
+
+	const [shorter, longer] =
+		fideTokens.length <= hubTokens.length ? [fideTokens, hubTokens] : [hubTokens, fideTokens];
+	const longerSet = new Set(longer);
+	const hits = shorter.filter((token) => longerSet.has(token));
+	const substantialHits = hits.filter((token) => token.length >= 3);
+	if (substantialHits.length === 0) return false;
+
+	return hits.length >= Math.ceil(shorter.length / 2);
+}
+
+/**
+ * @param {string | null | undefined} value
+ * @returns {string[]}
+ */
+export function nameTokens(value) {
+	if (!value) return [];
+	return value
+		.toLowerCase()
+		.replace(/[,.'’`-]+/g, ' ')
+		.split(/[^a-z]+/)
+		.map((part) => part.trim())
+		.filter((part) => part.length >= 2 && !NAME_TITLE_TOKENS.has(part));
 }
 
 /**

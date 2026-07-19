@@ -10,6 +10,7 @@ import {
 	tournamentAward,
 	prizeClaim,
 	tournamentRegistration,
+	donation,
 	organizerRequest,
 	userFollow,
 	user,
@@ -95,6 +96,20 @@ export async function getChessAccount(userId, platform) {
 		.select()
 		.from(chessAccount)
 		.where(and(eq(chessAccount.userId, userId), eq(chessAccount.platform, platform)))
+		.limit(1);
+	return row ?? null;
+}
+
+/**
+ * Find a linked chess account by platform + username (e.g. FIDE ID).
+ * @param {'lichess' | 'chesscom' | 'fide'} platform
+ * @param {string} username
+ */
+export async function findChessAccountByPlatformUsername(platform, username) {
+	const [row] = await db
+		.select()
+		.from(chessAccount)
+		.where(and(eq(chessAccount.platform, platform), eq(chessAccount.username, username)))
 		.limit(1);
 	return row ?? null;
 }
@@ -1170,6 +1185,23 @@ export async function countPaidRegistrations(tournamentId) {
 }
 
 /**
+ * Pending + paid registrations (used for capacity when spots are reserved awaiting approval).
+ * @param {string} tournamentId
+ */
+export async function countOccupiedRegistrations(tournamentId) {
+	const [result] = await db
+		.select({ count: sql`count(*)` })
+		.from(tournamentRegistration)
+		.where(
+			and(
+				eq(tournamentRegistration.tournamentId, tournamentId),
+				inArray(tournamentRegistration.status, ['pending', 'paid'])
+			)
+		);
+	return Number(result?.count ?? 0);
+}
+
+/**
  * Paid registrations for a tournament, newest first.
  * @param {string} tournamentId
  */
@@ -1193,6 +1225,37 @@ export async function listPaidRegistrations(tournamentId) {
 			)
 		)
 		.orderBy(desc(tournamentRegistration.paidAt), desc(tournamentRegistration.createdAt));
+}
+
+/**
+ * Registrations for organizer review (pending first, then paid).
+ * @param {string} tournamentId
+ */
+export async function listTournamentRegistrations(tournamentId) {
+	return db
+		.select({
+			id: tournamentRegistration.id,
+			userId: tournamentRegistration.userId,
+			status: tournamentRegistration.status,
+			paidAt: tournamentRegistration.paidAt,
+			createdAt: tournamentRegistration.createdAt,
+			name: user.name,
+			username: user.username,
+			email: user.email,
+			image: user.image
+		})
+		.from(tournamentRegistration)
+		.innerJoin(user, eq(tournamentRegistration.userId, user.id))
+		.where(
+			and(
+				eq(tournamentRegistration.tournamentId, tournamentId),
+				inArray(tournamentRegistration.status, ['pending', 'paid'])
+			)
+		)
+		.orderBy(
+			sql`CASE WHEN ${tournamentRegistration.status} = 'pending' THEN 0 ELSE 1 END`,
+			desc(tournamentRegistration.createdAt)
+		);
 }
 
 /**
@@ -1275,6 +1338,85 @@ export async function getRegistrationByCheckoutSession(checkoutSessionId) {
 		.where(eq(tournamentRegistration.paymongoCheckoutSessionId, checkoutSessionId))
 		.limit(1);
 	return row ?? null;
+}
+
+/**
+ * @param {{
+ *   amountCents: number,
+ *   currency?: string,
+ *   userId?: string | null,
+ *   donorName?: string | null,
+ *   donorEmail?: string | null,
+ *   message?: string | null,
+ *   listPublic?: boolean,
+ *   publicName?: string | null
+ * }} data
+ */
+export async function createDonation(data) {
+	const id = createId();
+	await db.insert(donation).values({
+		id,
+		userId: data.userId ?? null,
+		amountCents: data.amountCents,
+		currency: data.currency ?? 'php',
+		status: 'pending',
+		donorName: data.donorName ?? null,
+		donorEmail: data.donorEmail ?? null,
+		message: data.message ?? null,
+		listPublic: Boolean(data.listPublic),
+		publicName: data.listPublic ? (data.publicName ?? null) : null
+	});
+	return getDonationById(id);
+}
+
+/**
+ * @param {string} id
+ */
+export async function getDonationById(id) {
+	const [row] = await db.select().from(donation).where(eq(donation.id, id)).limit(1);
+	return row ?? null;
+}
+
+/**
+ * @param {string} checkoutSessionId
+ */
+export async function getDonationByCheckoutSession(checkoutSessionId) {
+	const [row] = await db
+		.select()
+		.from(donation)
+		.where(eq(donation.paymongoCheckoutSessionId, checkoutSessionId))
+		.limit(1);
+	return row ?? null;
+}
+
+/**
+ * @param {string} id
+ * @param {{
+ *   status?: 'pending' | 'paid' | 'failed' | 'expired',
+ *   paymongoCheckoutSessionId?: string | null,
+ *   paymongoPaymentId?: string | null,
+ *   paidAt?: Date | null
+ * }} data
+ */
+export async function updateDonation(id, data) {
+	await db.update(donation).set(data).where(eq(donation.id, id));
+	return getDonationById(id);
+}
+
+/**
+ * Paid donors who opted into the public supporters list (names only).
+ */
+export async function listPublicSupporters() {
+	const rows = await db
+		.select({
+			id: donation.id,
+			publicName: donation.publicName,
+			paidAt: donation.paidAt
+		})
+		.from(donation)
+		.where(and(eq(donation.status, 'paid'), eq(donation.listPublic, true)))
+		.orderBy(desc(donation.paidAt));
+	return rows.filter((row) => Boolean(row.publicName?.trim()));
 }
 
 /**

@@ -7,12 +7,17 @@ import {
 	getPaidPaymentId,
 	isCheckoutSessionPaid,
 	toPayerFacingMessage,
-	checkoutOutcomeMarker
+	checkoutOutcomeMarker,
+	isDonationCheckoutResource,
+	donationLookupKeys
 } from '$lib/server/paymongo';
 import {
 	getRegistrationByCheckoutSession,
 	getRegistrationById,
 	updateRegistration,
+	getDonationByCheckoutSession,
+	getDonationById,
+	updateDonation,
 	getPrizeClaimById,
 	getPrizeClaimByPaymongoTransfer,
 	getPrizeClaimByWalletTransaction,
@@ -63,6 +68,8 @@ export async function POST(event) {
 	}
 
 	const { eventType, session } = parseWebhookEvent(payload);
+	const sessionRow = /** @type {Record<string, any> | null} */ (session);
+	const isDonation = isDonationCheckoutResource(sessionRow);
 
 	/**
 	 * @param {string} tournamentId
@@ -77,10 +84,28 @@ export async function POST(event) {
 	/**
 	 * @param {'failed' | 'expired'} outcome
 	 */
+	async function markDonationFailedOrExpired(outcome) {
+		const keys = donationLookupKeys(sessionRow);
+		const donation =
+			(keys.sessionId ? await getDonationByCheckoutSession(keys.sessionId) : null) ??
+			(keys.donationId ? await getDonationById(keys.donationId) : null);
+		if (donation && donation.status === 'pending') {
+			await updateDonation(donation.id, {
+				status: outcome,
+				paymongoPaymentId: checkoutOutcomeMarker(outcome)
+			});
+		}
+	}
+
+	/**
+	 * @param {'failed' | 'expired'} outcome
+	 */
 	async function markCheckoutFailedOrExpired(outcome) {
-		const keys = registrationLookupKeys(
-			/** @type {Record<string, any> | null} */ (session)
-		);
+		if (isDonation) {
+			await markDonationFailedOrExpired(outcome);
+			return;
+		}
+		const keys = registrationLookupKeys(sessionRow);
 		const registration =
 			(keys.sessionId ? await getRegistrationByCheckoutSession(keys.sessionId) : null) ??
 			(keys.registrationId ? await getRegistrationById(keys.registrationId) : null);
@@ -88,6 +113,9 @@ export async function POST(event) {
 			await updateRegistration(registration.id, {
 				paymongoPaymentId: checkoutOutcomeMarker(outcome)
 			});
+		} else if (!registration) {
+			// Fallback: session may be a donation without clear metadata on failure events
+			await markDonationFailedOrExpired(outcome);
 		}
 	}
 
@@ -95,8 +123,7 @@ export async function POST(event) {
 	 * @returns {'failed' | 'expired'}
 	 */
 	function failureOutcomeFromResource() {
-		const row = /** @type {Record<string, any> | null} */ (session);
-		const attrs = row?.attributes ?? row ?? {};
+		const attrs = sessionRow?.attributes ?? sessionRow ?? {};
 		const sourceType = String(attrs.source?.type ?? attrs.type ?? '').toLowerCase();
 		const failedCode = String(
 			attrs.failed_code ?? attrs.last_payment_error?.failed_code ?? ''
@@ -107,7 +134,31 @@ export async function POST(event) {
 		return 'failed';
 	}
 
-	if (eventType === 'checkout_session.payment.paid' && session?.id) {
+	/**
+	 * @returns {Promise<boolean>} true if a donation was updated
+	 */
+	async function markDonationPaid() {
+		if (!session?.id) return false;
+		const keys = donationLookupKeys(sessionRow);
+		const donation =
+			(await getDonationByCheckoutSession(session.id)) ??
+			(keys.donationId ? await getDonationById(keys.donationId) : null);
+		if (donation && donation.status !== 'paid') {
+			await updateDonation(donation.id, {
+				status: 'paid',
+				paidAt: new Date(),
+				paymongoPaymentId: getPaidPaymentId(session)
+			});
+			return true;
+		}
+		return Boolean(donation);
+	}
+
+	/**
+	 * @returns {Promise<boolean>} true if a registration was updated
+	 */
+	async function markRegistrationPaid() {
+		if (!session?.id) return false;
 		const registration = await getRegistrationByCheckoutSession(session.id);
 		if (registration && registration.status !== 'paid') {
 			await updateRegistration(registration.id, {
@@ -116,6 +167,17 @@ export async function POST(event) {
 				paymongoPaymentId: getPaidPaymentId(session)
 			});
 			await markPaidAndSyncAllowList(registration.tournamentId);
+			return true;
+		}
+		return Boolean(registration);
+	}
+
+	if (eventType === 'checkout_session.payment.paid' && session?.id) {
+		if (isDonation) {
+			await markDonationPaid();
+		} else {
+			const handled = await markRegistrationPaid();
+			if (!handled) await markDonationPaid();
 		}
 	} else if (
 		eventType === 'payment.paid' &&
@@ -123,14 +185,11 @@ export async function POST(event) {
 		isCheckoutSessionPaid(session) &&
 		session.id
 	) {
-		const registration = await getRegistrationByCheckoutSession(session.id);
-		if (registration && registration.status !== 'paid') {
-			await updateRegistration(registration.id, {
-				status: 'paid',
-				paidAt: new Date(),
-				paymongoPaymentId: getPaidPaymentId(session)
-			});
-			await markPaidAndSyncAllowList(registration.tournamentId);
+		if (isDonation) {
+			await markDonationPaid();
+		} else {
+			const handled = await markRegistrationPaid();
+			if (!handled) await markDonationPaid();
 		}
 	} else if (
 		eventType === 'qrph.expired' ||

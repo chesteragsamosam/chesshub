@@ -31,7 +31,9 @@
 		<section class="panel">
 			<h2 class="section-title">Payments</h2>
 			<p class="page-lede">
-				Paid registrations aren’t available yet. Contact the site admin to enable payments.
+				Online paid registrations aren’t available yet. You can still collect entry fees by enabling
+				<strong>Accept direct payment to organizer</strong> when creating a tournament, then approve
+				players after they pay you offline.
 			</p>
 		</section>
 	{/if}
@@ -88,7 +90,15 @@
 							· {new Date(tournament.startDate).toLocaleDateString()}
 						</p>
 					</div>
-					<a href={resolve(`/organizer/tournaments/${tournament.id}/edit`)} class="link">Edit</a>
+					<div class="row-links">
+						<a href={resolve(`/organizer/tournaments/${tournament.id}/edit`)} class="link">Edit</a>
+						<a
+							href={resolve(`/organizer/tournaments/${tournament.id}/registrations`)}
+							class="link"
+						>
+							Registrations
+						</a>
+					</div>
 				</li>
 			{/each}
 		</ul>
@@ -176,6 +186,12 @@
 		margin: $space-1 0 0;
 		font-size: $font-size-sm;
 		color: $color-text-muted;
+	}
+
+	.row-links {
+		display: flex;
+		flex-wrap: wrap;
+		gap: $space-3;
 	}
 
 	.modality {

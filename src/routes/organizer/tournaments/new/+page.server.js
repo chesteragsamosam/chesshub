@@ -117,6 +117,7 @@ export const actions = {
 		const startDateRaw = field(formData, 'startDate');
 		const entryFeeRaw = field(formData, 'entryFee') || '0';
 		const currency = (field(formData, 'currency') || 'php').toLowerCase();
+		const directPaymentToOrganizer = formData.get('directPaymentToOrganizer') === 'on';
 		const maxPlayersRaw = field(formData, 'maxPlayers');
 		const publish = formData.get('publish') === 'on';
 		const clockTimeRaw = field(formData, 'clockTime') || '3';
@@ -150,6 +151,7 @@ export const actions = {
 			startDate: startDateRaw,
 			entryFee: entryFeeRaw,
 			currency,
+			directPaymentToOrganizer,
 			maxPlayers: maxPlayersRaw,
 			publish,
 			clockTime: clockTimeRaw,
@@ -232,6 +234,13 @@ export const actions = {
 			return fail(400, { ...bounce, message: 'Invalid entry fee' });
 		}
 
+		if (directPaymentToOrganizer && entryFeeCents <= 0) {
+			return fail(400, {
+				...bounce,
+				message: 'Set an entry fee when accepting direct payment to the organizer.'
+			});
+		}
+
 		if (currency !== 'php') {
 			return fail(400, { ...bounce, message: 'Currency must be PHP for GCash or QR Ph payments' });
 		}
@@ -250,11 +259,11 @@ export const actions = {
 
 		let status = /** @type {'draft' | 'published'} */ ('draft');
 		if (publish) {
-			if (entryFeeCents > 0 && !isPaymongoConfigured()) {
+			if (entryFeeCents > 0 && !directPaymentToOrganizer && !isPaymongoConfigured()) {
 				return fail(400, {
 					...bounce,
 					message:
-						'Paid registrations aren’t available yet. Contact the site admin to enable payments.'
+						'Paid registrations aren’t available yet. Contact the site admin to enable payments, or accept direct payment to the organizer.'
 				});
 			}
 			status = 'published';
@@ -350,6 +359,7 @@ export const actions = {
 			endDate,
 			entryFeeCents,
 			currency,
+			directPaymentToOrganizer,
 			maxPlayers: maxPlayers && Number.isFinite(maxPlayers) ? maxPlayers : null,
 			clockTime,
 			clockIncrement,

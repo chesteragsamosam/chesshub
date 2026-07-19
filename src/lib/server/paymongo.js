@@ -306,6 +306,104 @@ export async function createCheckoutSession(opts) {
 }
 
 /**
+ * @param {{
+ *   donationId: string,
+ *   amountCents: number,
+ *   currency?: string,
+ *   user?: { id?: string, email?: string | null, name?: string | null } | null,
+ *   successUrl: string,
+ *   cancelUrl: string
+ * }} opts
+ */
+export async function createDonationCheckoutSession(opts) {
+	const currency = (opts.currency || 'php').toUpperCase();
+	if (currency !== 'PHP') {
+		throw new Error('PayMongo only supports PHP currency');
+	}
+	if (!Number.isInteger(opts.amountCents) || opts.amountCents < 2000) {
+		throw new Error('Donation amount must be at least ₱20');
+	}
+
+	const attributes = {
+		line_items: [
+			{
+				name: 'ChessHub donation',
+				description: 'Support ChessHub',
+				amount: opts.amountCents,
+				currency: 'PHP',
+				quantity: 1
+			}
+		],
+		payment_method_types: ['gcash', 'qrph'],
+		success_url: opts.successUrl,
+		cancel_url: opts.cancelUrl,
+		reference_number: opts.donationId.slice(0, 36),
+		send_email_receipt: Boolean(opts.user?.email),
+		metadata: {
+			type: 'donation',
+			donationId: opts.donationId,
+			...(opts.user?.id ? { userId: opts.user.id } : {})
+		}
+	};
+
+	if (opts.user?.email || opts.user?.name) {
+		Object.assign(attributes, {
+			billing: {
+				name: opts.user.name || undefined,
+				email: opts.user.email || undefined
+			}
+		});
+	}
+
+	const json = await paymongoFetch('/checkout_sessions', {
+		method: 'POST',
+		body: { data: { attributes } },
+		apiBase: PAYMONGO_CHECKOUT_API
+	});
+
+	const session = json?.data;
+	if (!session?.id || !session?.attributes?.checkout_url) {
+		throw new Error('PayMongo did not return a checkout URL');
+	}
+
+	return {
+		id: /** @type {string} */ (session.id),
+		url: /** @type {string} */ (session.attributes.checkout_url)
+	};
+}
+
+/**
+ * Whether a checkout session resource is a platform donation (vs tournament entry).
+ * @param {Record<string, any> | null | undefined} resource
+ */
+export function isDonationCheckoutResource(resource) {
+	if (!resource || typeof resource !== 'object') return false;
+	const attrs = resource.attributes ?? {};
+	const meta = attrs.metadata ?? resource.metadata ?? {};
+	return meta.type === 'donation' || typeof meta.donationId === 'string';
+}
+
+/**
+ * @param {Record<string, any> | null | undefined} resource
+ * @returns {{ sessionId: string | null, donationId: string | null }}
+ */
+export function donationLookupKeys(resource) {
+	if (!resource || typeof resource !== 'object') return { sessionId: null, donationId: null };
+	const attrs = resource.attributes ?? {};
+	const meta = attrs.metadata ?? resource.metadata ?? {};
+	const id = typeof resource.id === 'string' ? resource.id : null;
+	return {
+		sessionId: id?.startsWith('cs_') ? id : null,
+		donationId:
+			typeof meta.donationId === 'string'
+				? meta.donationId
+				: typeof attrs.reference_number === 'string'
+					? attrs.reference_number
+					: null
+	};
+}
+
+/**
  * @typedef {{
  *   id?: string,
  *   status?: string,
